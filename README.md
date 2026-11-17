@@ -13,10 +13,10 @@ machine.
   files: a folder with `exefs` and `romfs` in it, with the update applied. Packages (`.nsp`, `.xci`, `.nca`) can't be
   used directly. Other versions of the game are not supported - the port checks the game's build and refuses any other
   version, because the recompiled code is tied to that exact build.
-- On first start the program asks for that folder, copies the game files and builds the game code from them on your PC
-  (about 12 GB of free space needed).
-- **DLC:** not supported yet. The game is told that no add-on content is installed, so the Switch DLC packs are not
-  loaded even if you have them.
+- On first start the program asks for that folder and sets the game up from it (about 12 GB of free space needed).
+- **DLC (optional):** put your own DLC packs - the `.nsp` files, as they are - in the `dlc` folder inside the program's
+  data folder. The game then sees them as installed and unlocks their items. Only packs that are there are reported;
+  nothing is unlocked without them. (The game's DLC packs are ownership tokens; their items are in the base game.)
 - Windows 10/11 x64 and a Vulkan 1.3 graphics card
 - A controller is recommended (DualSense, DualShock 4, Xbox and others); keyboard works for menus
 
@@ -41,7 +41,6 @@ machine.
 
 ## Planned
 - Android (ARM64) build
-- DLC support
 - Local network play between PCs
 
 ## How it works (short)
