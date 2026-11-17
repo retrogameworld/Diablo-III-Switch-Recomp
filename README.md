@@ -9,16 +9,28 @@ services, the NVN graphics API, audio output, controllers, saves - are reimpleme
 machine.
 
 ## Requirements
-- **Your own copy of the game, version 2.7.7 only.** You need the base game *and* the 2.7.7 update, as extracted game
-  files: a folder with `exefs` and `romfs` in it, with the update applied. Packages (`.nsp`, `.xci`, `.nca`) can't be
-  used directly. Other versions of the game are not supported - the port checks the game's build and refuses any other
-  version, because the recompiled code is tied to that exact build.
-- On first start the program asks for that folder and sets the game up from it (about 12 GB of free space needed).
-- **DLC (optional):** put your own DLC packs - the `.nsp` files, as they are - in the `dlc` folder inside the program's
-  data folder. The game then sees them as installed and unlocks their items. Only packs that are there are reported;
-  nothing is unlocked without them. (The game's DLC packs are ownership tokens; their items are in the base game.)
-- Windows 10/11 x64 and a Vulkan 1.3 graphics card
-- A controller is recommended (DualSense, DualShock 4, Xbox and others); keyboard works for menus
+- **Your own copy of the game, as NSP files:** the Diablo III: Eternal Collection **base game** and the **2.7.7 update**
+  (v1441792). Other versions of the game are not supported - the recompiled code is tied to that exact build, and the
+  setup checks it.
+- **Your own `prod.keys`**, dumped from your own Switch (firmware 22.5.0 or newer).
+- **DLC (optional):** your own Diablo III DLC NSPs. The game then sees them as installed and unlocks their items.
+- Windows 10/11 x64, a graphics card with Vulkan 1.3, a CPU with AVX2, and about 25 GB of free space for the setup.
+- A controller is recommended (DualSense, DualShock 4, Xbox and others); keyboard works for menus.
+
+## Setup
+1. Put your base game NSP, your 2.7.7 update NSP, your `prod.keys` and (optionally) your DLC NSPs in the `data` folder,
+   next to `Diablo3Recomp.exe`. File names don't matter.
+2. Start `Diablo3Recomp.exe`. The first start unpacks the game and builds its code for your PC, with a progress
+   window (about 15-45 minutes, once). Then the game starts.
+3. After that your NSPs and `prod.keys` are moved to a folder named "Your game files (no longer needed)" next to the
+   program, with a note: the game doesn't use them any more, so you can delete that folder or keep it as a backup.
+   Your DLC stays installed (`data\dlc`).
+
+Later starts go straight into the game.
+
+**The PC Settings menu's lettering:** free look-alike fonts are built in. If you also have Diablo III on PC, the setup
+uses Diablo's own fonts from that install (found by itself in the usual places, or pick its folder in PC Settings >
+Video > Menu fonts) - copied on your PC only.
 
 ## What works
 - The game from the title screen on: hero creation, the campaign and saves
@@ -28,7 +40,7 @@ machine.
 - Borderless, exclusive full screen or windowed
 - PlayStation or Xbox button prompts and controller pictures, chosen by the controller in use
 - PC Settings in the game's own style, from the main menu or the Share / PS button: video, audio (Extra Volume,
-  Extra Music Volume, Stereo / Mono), controls
+  Extra Music Volume, Stereo / Mono), controls - with the game's own menu sounds and highlight, made from your copy
 - Offline play: online-only menus, Season / Leaderboard / store entries and "Not Signed In" messages are gone;
   "Exit Game" on the main menu
 
@@ -56,7 +68,11 @@ machine.
 - **LAS Recomp**, a static recompilation of The Legend of Zelda: Link's Awakening for Switch (MIT) - the base this
   project is built from
 - **Ryujinx** (MIT) - references for the audio renderer and the shader decoder
-- Dear ImGui, SDL3, the Vulkan SDK and other libraries under their own licenses
+- **hactool** by SciresM (ISC) - unpacks your NSPs (with a small change to read them in place)
+- **zig** (MIT) - the compiler the setup builds the game code with on your PC
+- **Marcellus SC** and **EB Garamond** (SIL Open Font License) - the built-in PC Settings fonts
+- Dear ImGui, SDL3, FFmpeg (from MSYS2; some parts under the GPL), the Vulkan SDK and other libraries under their own
+  licenses
 
 Diablo is a trademark of Blizzard Entertainment. Nintendo Switch is a trademark of Nintendo. This project is not
 affiliated with or endorsed by Blizzard Entertainment or Nintendo.
