@@ -9,7 +9,14 @@ services, the NVN graphics API, audio output, controllers, saves - are reimpleme
 machine.
 
 ## Requirements
-- Your own dump of the game: the base game and the 2.7.7 update (the DLC is optional)
+- **Your own copy of the game, version 2.7.7 only.** You need the base game *and* the 2.7.7 update, as extracted game
+  files: a folder with `exefs` and `romfs` in it, with the update applied. Packages (`.nsp`, `.xci`, `.nca`) can't be
+  used directly. Other versions of the game are not supported - the port checks the game's build and refuses any other
+  version, because the recompiled code is tied to that exact build.
+- On first start the program asks for that folder, copies the game files and builds the game code from them on your PC
+  (about 12 GB of free space needed).
+- **DLC:** not supported yet. The game is told that no add-on content is installed, so the Switch DLC packs are not
+  loaded even if you have them.
 - Windows 10/11 x64 and a Vulkan 1.3 graphics card
 - A controller is recommended (DualSense, DualShock 4, Xbox and others); keyboard works for menus
 
@@ -34,6 +41,7 @@ machine.
 
 ## Planned
 - Android (ARM64) build
+- DLC support
 - Local network play between PCs
 
 ## How it works (short)
