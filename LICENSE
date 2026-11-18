@@ -1,0 +1,37 @@
+Diablo III Switch Recomp
+Copyright (c) 2026 retrogameworld. All rights reserved.
+
+This repository is SOURCE-AVAILABLE, NOT open source.
+
+You may view and read the source code in this repository, and download and use the
+released program for your own personal, non-commercial use with your own legally
+obtained copy of the game.
+
+Without prior written permission from the copyright holder you may NOT:
+  - copy, reproduce or republish this code, in whole or in part;
+  - modify it or make derivative works or forks of it to distribute;
+  - redistribute, sublicense, sell or host it elsewhere;
+  - use it to make another port, release or product.
+
+This applies to everything in this repository except the parts listed below, which
+remain under their own licenses.
+
+Parts under other licenses (their licenses still apply to those parts):
+  - LAS Recomp (the base of this project), MIT License, Copyright (c) 2026 Peiikai
+    - see source/LICENSE.
+  - Dear ImGui (source/third_party/imgui), MIT License - see its LICENSE.txt.
+  - LAS-Randomizer (source/third_party/LAS-Randomizer), MIT License - see its LICENSE.txt.
+  - SMAA (source/third_party/smaa) - see its license notice.
+  - Fonts in source/third_party/fonts, SIL Open Font License or their own licenses -
+    see the license file next to each font.
+
+No game files, keys, firmware or other content owned by Blizzard Entertainment or
+Nintendo are included in this repository or its releases. Diablo is a trademark of
+Blizzard Entertainment, Inc.; Nintendo Switch is a trademark of Nintendo. This project
+is not affiliated with or endorsed by either of them.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE USE OF
+THE SOFTWARE.

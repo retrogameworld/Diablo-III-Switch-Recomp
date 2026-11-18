@@ -14,6 +14,8 @@ machine.
   setup checks it.
 - **Your own `prod.keys`**, dumped from your own Switch (firmware 22.5.0 or newer).
 - **DLC (optional):** your own Diablo III DLC NSPs. The game then sees them as installed and unlocks their items.
+- **Voice packs (optional):** your own Diablo III voice pack NSPs (free add-ons on the Switch). Put them in the `data`
+  folder like the DLC: the next start unpacks their voices once, and the game can then use that voice language.
 - Windows 10/11 x64, a graphics card with Vulkan 1.3, a CPU with AVX2, and about 25 GB of free space for the setup.
 - A controller is recommended (DualSense, DualShock 4, Xbox and others); keyboard works for menus.
 
@@ -63,6 +65,15 @@ Video > Menu fonts) - copied on your PC only.
 - Button prompts: the game's prompt textures are redrawn at load time with PlayStation or Xbox symbols.
 - 120 fps: the time handed to each frame is kept on the game's half-step grid, and the hero's on-screen motion is
   watched for the double-image pattern and corrected.
+
+## Source code and license
+The source code of this port is in the `source` folder, for reading. **It is source-available, not open source:**
+you may read it and use the released program for yourself, but you may not copy, modify, redistribute or republish it
+(or make another port from it) without permission. See [LICENSE](LICENSE). The parts that come from other projects keep
+their own licenses - most importantly **LAS Recomp**, the base of this port, which is MIT (see `source/LICENSE`).
+
+The source contains no game code, game files, keys or game assets: the game's code is generated on each player's PC
+from their own copy.
 
 ## Credits
 - **LAS Recomp**, a static recompilation of The Legend of Zelda: Link's Awakening for Switch (MIT) - the base this
