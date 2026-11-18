@@ -750,7 +750,7 @@ static void hd_release(TexBackend *b) {
 // (src/analysis/d3_controller_page.py: <hash>.dds and <hash>_xbox.dds), by the controller in use, whatever the
 // HD textures setting (the tester 2026-11-15)
 #define D3_CTRL_PAGE 0x87a23a48fce614abull
-extern int input_pad_family(void);
+extern int input_pad_family(void), d3_prompts_xbox(void);  // (runtime/hle/input.c)
 static bool hd_replace(NvnTexture *t, TexBackend *b, uint64_t h, VkFormat game_vf) {
     bool ctrl = h == D3_CTRL_PAGE;
     if (!game_is_d3() || (!g_settings.hd_textures && !ctrl)) return false;
@@ -759,7 +759,7 @@ static bool hd_replace(NvnTexture *t, TexBackend *b, uint64_t h, VkFormat game_v
     if (b->base_type != VK_IMAGE_VIEW_TYPE_2D || b->layers != 1 || b->depth != 1) return false;
     if (h == 0x450cd94995bd5c90ull) return false;  // (the button-prompt atlas: PlayStation labels drawn into it, texpatch.c)
     if (!bsearch(&h, hd_keys, hd_nkeys, sizeof h, hd_cmp)) return false;
-    int variant = ctrl && input_pad_family() == 1;
+    int variant = ctrl && d3_prompts_xbox();
     if (b->hd && b->data_hash == h && b->hd_variant == variant) return true;
     char path[1200];
     snprintf(path, sizeof path, "%s%016llx%s.dds", hd_dir, (unsigned long long)h, variant ? "_xbox" : "");
@@ -865,9 +865,9 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
     bool restyle = b->tp > 0 && b->tp <= TEXPATCH_RECOLOUR_BASE && b->uploaded && b->tp_gen != texpatch_generation();
     // (Diablo III's prompt atlas: drawn again when the game's menus open or close - its shoulder labels differ, texpatch.c)
     extern int d3_menu_open(void), input_pad_family(void);
-    int d3_mode = b->uploaded && b->data_hash == 0x450cd94995bd5c90ull ? d3_menu_open() + 2 * (input_pad_family() == 1) : -1;
+    int d3_mode = b->uploaded && b->data_hash == 0x450cd94995bd5c90ull ? d3_menu_open() + 2 * (d3_prompts_xbox()) : -1;
     if (d3_mode >= 0 && b->tp_gen != (uint32_t)d3_mode + 1) restyle = true;
-    if (b->uploaded && b->hd && b->data_hash == D3_CTRL_PAGE && b->hd_variant != (input_pad_family() == 1)) restyle = true;
+    if (b->uploaded && b->hd && b->data_hash == D3_CTRL_PAGE && b->hd_variant != (d3_prompts_xbox())) restyle = true;
     // The OS's page write tracking (exec.c vk_pages_changed, shared with the vertex cache): texture memory the CPU
     // hasn't written since the last check is not hashed at all (dynamic textures were fully hashed every frame,
     // ~2.4 MB a frame in the overworld). The periodic full hash stays as a safety net. LARECOMP_VK_TEX_WATCH=0: off.
@@ -906,9 +906,9 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
     if (!identified_now && h != b->data_hash) b->tp = texpatch_marker(t);
     if (b->tp > 0) b->tp_gen = texpatch_generation();
     if (h == 0x450cd94995bd5c90ull && game_is_d3()) {
-        extern int d3_menu_open(void), input_pad_family(void), g_d3_label_menu, g_d3_label_xbox;
+        extern int d3_menu_open(void), d3_prompts_xbox(void), g_d3_label_menu, g_d3_label_xbox;
         g_d3_label_menu = d3_menu_open();
-        g_d3_label_xbox = input_pad_family() == 1;
+        g_d3_label_xbox = d3_prompts_xbox();
         b->tp_gen = (uint32_t)(g_d3_label_menu + 2 * g_d3_label_xbox) + 1;
     }
     if (hd_replace(t, b, h, mf.vf)) { b->data_hash = h; b->uploaded = true; return; }
@@ -974,8 +974,11 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
                 }
             }
             // Diablo III's world interaction prompt (four circles, one lit): the PlayStation button (texpatch.c)
-            if (layer == 0 && t->format == 0x25 && h == 0x1fd735c20acb0535ull && !getenv("D3_NINTENDO_PROMPTS"))
+            if (layer == 0 && t->format == 0x25 && h == 0x1fd735c20acb0535ull && !getenv("D3_NINTENDO_PROMPTS")) {
+                extern int d3_prompts_xbox(void), g_d3_label_xbox;
+                g_d3_label_xbox = d3_prompts_xbox();  // (its symbol in the same style as the atlas)
                 texpatch_d3_world_prompt(lin, l.w, l.h, row);
+            }
             // Diablo III's title screen picture sheet: its logo, saved once for our loading screens (texpatch.c)
             if (layer == 0 && lv == 0 && t->format == 0x44 && h == 0xae7dfd1937d1fdc6ull && !g_d3_logo_ready)
                 texpatch_d3_title_logo(lin, l.w, l.h, row);

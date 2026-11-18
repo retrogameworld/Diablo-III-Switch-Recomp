@@ -17,6 +17,7 @@
 #include "option_rows.h"
 #ifndef __APPLE__
 extern "C" uint64_t vk_imgui_texture_rgba(const void *rgba, int w, int h);  // (nvn/vulkan/imgui_glue.cpp)
+extern "C" int d3_prompts_xbox(void);  // (hle/input.c: Diablo III's button pictures in Xbox style)
 extern "C" uint8_t *texpatch_d3_embedded_logo(uint32_t *w, uint32_t *h);  // (nvn/texpatch.c: a private build's logo)
 extern "C" volatile int g_d3_ui_art_gen;  // (runtime/hle/d3_art.c: bumped when it writes a menu piece)
 #endif
@@ -486,7 +487,7 @@ static void d3_button_hints(float scale) {
     ImDrawList *dl = ImGui::GetForegroundDrawList();
     ImFont *f = g_menu_font ? g_menu_font : ImGui::GetFont();
     float fs = 29 * scale, cy = io.DisplaySize.y - 52 * scale, gap = 40 * scale;
-    bool xbox = input_pad_family() == 1;
+    bool xbox = d3_prompts_xbox();  // (the "Button icons" setting, else the controller)
     // (measure, then centre)
     float r2 = fs * 0.96f + 12 * scale;
     const char *w[3] = {"Accept", "Back", "Tabs"};

@@ -421,6 +421,17 @@ int input_pad_family(void) {
 // (1 / 2): the bottom one confirms, the right one goes back (runtime/ui/pad_nav.mm). "Button icons"
 // forced to a style wins (icons and menus agree); Auto: the controller `which` that pressed (0, or not a connected
 // gamepad - a test's pushed press: the game's controller / the first connected one, else Nintendo).
+// (Diablo III) its button pictures in Xbox style (A / B / X / Y, LB / RB / LT / RT) or PlayStation style: "Button icons"
+// when it is set to a style, else the controller in use. A player's report (2026-11-18): Xbox chosen, PlayStation
+// pictures still shown - only the connected controller was asked. (Nintendo: PlayStation, the port's default look.)
+int d3_prompts_xbox(void) {
+    switch (g_settings.prompts) {
+    case PROMPTS_XBOX: return 1;
+    case PROMPTS_PLAYSTATION: case PROMPTS_NINTENDO: return 0;
+    default: return input_pad_family() == 1;
+    }
+}
+
 int input_menu_family(SDL_JoystickID which) {
     switch (g_settings.prompts) {
     case PROMPTS_NINTENDO: return 0;
