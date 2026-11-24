@@ -220,6 +220,10 @@ int d3_menu_open(void) {  // (also the prompt atlas's labels: nvn/texpatch.c, vu
     extern int g_nmodules;
     if (!game_is_d3() || g_nmodules < 1 || g_modules[0].size <= 0x18426b0) return 0;
     if (*(volatile uint8_t *)(uintptr_t)(g_modules[0].base + 0x18426b0) != 0) return 1;  // (the game's own menus in play)
+    // (vendors, the artisans, the stash leave that byte 0 - their tabs then got the in-play layout: R1 did nothing and
+    // L1 moved the tabs, GitHub #2. The word at main+0x1830d90 is 0xfeffffff in play and the world's dim colour
+    // (0x..838383) while any window covers it: inventory, pause, map, vendors - found by comparing memory dumps.)
+    if (*(volatile uint32_t *)(uintptr_t)(g_modules[0].base + 0x1830d90) != 0xfeffffffu) return 1;
     // (outside the world - the main menu and its pages: Options, Challenges, Hero Profile... - the game's flag stays 0,
     // so the in-play layout applied there: R1 was ZL, which switches nothing - GitHub #2, "the right bumper doesn't
     // work when navigating between tabs in some menus". No world drawn in the last second: the menus' layout too.)
@@ -231,6 +235,16 @@ int d3_menu_open(void) {  // (also the prompt atlas's labels: nvn/texpatch.c, vu
     if (m != last && getenv("D3_LOG_MENU_LAYOUT")) LOG("[input] shoulder layout: %s\n", m ? "menus (no world)" : "play");
     last = m;
     return m;
+}
+// Diablo III's game menu (pause: Options, Change Difficulty...) is the Switch's Minus, which the default layout puts on
+// the PlayStation touchpad. A pad without one (Xbox, Switch Pro, most others) had no way to open it (GitHub #2): there
+// View / Back is Minus, as on the Xbox One version; the PC Settings then open with View + Menu (runtime/ui/menu.mm).
+int d3_pad_view_is_minus(SDL_Gamepad *g) {
+    if (host_test && getenv("D3_TEST_NO_TOUCHPAD")) return game_is_d3();  // (test: scripted pad without a touchpad)
+    return game_is_d3() && g && g_bind_pad[BIND_MINUS] == SDL_GAMEPAD_BUTTON_TOUCHPAD && SDL_GetNumGamepadTouchpads(g) == 0;
+}
+static uint64_t d3_view_minus(SDL_Gamepad *g, uint32_t host) {
+    return d3_pad_view_is_minus(g) && (host >> SDL_GAMEPAD_BUTTON_BACK & 1) ? 1ull << BIND_MINUS : 0;
 }
 static uint64_t d3_menu_shoulders(uint64_t b, uint32_t host) {
     if (!d3_menu_open()) return b;
@@ -254,7 +268,7 @@ static void recompute_pad(void) {
     uint64_t b = 0;
     for (int i = 0; i < BIND_PAD_COUNT; i++)
         if (g_bind_pad[i] >= 0 && g_bind_pad[i] < PADB_HOST_COUNT && (host >> g_bind_pad[i] & 1)) b |= 1ull << i;
-    b = d3_menu_shoulders(b, host);
+    b = d3_menu_shoulders(b, host) | d3_view_minus(pad, host);
     pad_buttons = b;
     if (!pad || host_test) { pad_lx = test_lx, pad_ly = test_ly, pad_rx = pad_ry = 0; return; }
     pad_lx = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTX);
@@ -281,6 +295,7 @@ static uint64_t pad_bits(int host) {   // the game buttons bound to host button 
     uint64_t b = 0;
     for (int i = 0; i < BIND_PAD_COUNT; i++)
         if (g_bind_pad[i] == host) b |= 1ull << i;
+    if (host == SDL_GAMEPAD_BUTTON_BACK && d3_pad_view_is_minus(pad)) b |= 1ull << BIND_MINUS;
     return b;
 }
 static void note_press(uint64_t down, uint64_t up) {
@@ -501,7 +516,7 @@ static void coop_recompute(int i) {
     uint64_t b = 0;
     for (int k = 0; k < BIND_PAD_COUNT; k++)
         if (g_bind_pad[k] >= 0 && g_bind_pad[k] < PADB_HOST_COUNT && (host >> g_bind_pad[k] & 1)) b |= 1ull << k;
-    coop_buttons[i] = d3_menu_shoulders(b, host);
+    coop_buttons[i] = d3_menu_shoulders(b, host) | d3_view_minus(g, host);
     coop_lx[i] = SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFTX);
     coop_ly[i] = -SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFTY);
     coop_rx[i] = SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_RIGHTX);

@@ -20,7 +20,10 @@ machine.
   - Controller layout set to Xbox now shows Xbox prompts with any controller.
   - The name keyboard can type Cyrillic, Greek and accented letters. (#5)
   - The Challenges entry (achievements) is back on the More page offline. (#3)
-  - RB / LB switch tabs in menus again. (#2)
+  - RB / LB switch tabs in menus again, at vendors and artisans too. (#2)
+  - Dyes show their real colours (they read the wrong colours, with black blocks). (#2)
+  - Xbox and other controllers without a touchpad: View opens the game menu (Options, Change Difficulty); PC
+    Settings open with View + Menu together. (#2)
   - Ultrawide (21:9, 32:9) screens: the game stays 16:9 with black bars instead of stretching. (#8)
 - **After updating, the first start builds the game code again, once** (a progress window, like the first setup).
   Your saves and settings stay.
@@ -59,7 +62,7 @@ Video > Menu fonts) - copied on your PC only.
 - Borderless, exclusive full screen or windowed
 - PlayStation, Xbox or Nintendo button prompts and controller pictures, chosen by the controller in use or in PC
   Settings > Controls
-- PC Settings in the game's own style, from the main menu or the Share / PS button: video, audio (Extra Volume,
+- PC Settings in the game's own style, from the main menu, the Share / PS button, or View + Menu on Xbox: video, audio (Extra Volume,
   Extra Music Volume, Stereo / Mono), controls - with the game's own menu sounds and highlight, made from your copy
 - Offline play: online-only menus, Season / Leaderboard / store entries and "Not Signed In" messages are gone;
   "Exit Game" on the main menu
@@ -82,6 +85,8 @@ All off by default; changes apply after a restart. Back up your saves before try
   `challengerift_00.dat` ...) into a folder named `challenge_rifts` inside the `data` folder. A new rift every week.
 
 ## Known issues
+- Mods: season buffs and events show as empty green boxes in the buff bar (the buffs work; their icons are missing
+  offline). Auto Pickup picks up gold and crafting materials, not gear and gems.
 - **120 fps is experimental.** The game steps its world 60 times a second; at 120 fps moving characters can now and
   then show ghosting (a double image). The port detects it and corrects itself within about a second, but if it
   bothers you, use 60 fps (the default).

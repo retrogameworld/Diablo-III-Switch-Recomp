@@ -18,6 +18,7 @@
 #ifndef __APPLE__
 extern "C" uint64_t vk_imgui_texture_rgba(const void *rgba, int w, int h);  // (nvn/vulkan/imgui_glue.cpp)
 extern "C" int d3_prompts_xbox(void);  // (hle/input.c: Diablo III's button pictures in Xbox style)
+extern "C" int d3_pad_view_is_minus(SDL_Gamepad *g);  // (hle/input.c: no touchpad - View is the game menu)
 extern "C" uint8_t *texpatch_d3_embedded_logo(uint32_t *w, uint32_t *h);  // (nvn/texpatch.c: a private build's logo)
 extern "C" volatile int g_d3_ui_art_gen;  // (runtime/hle/d3_art.c: bumped when it writes a menu piece)
 #endif
@@ -234,7 +235,8 @@ bool menu_handle_event(const SDL_Event *e) {
         if (e->gbutton.button == SDL_GAMEPAD_BUTTON_START) start_down = down;
         // (Diablo III: Create alone, and the PS button - the touchpad is the inventory there, as on PlayStation)
         if (down && !typing && ((back_down && start_down) || e->gbutton.button == SDL_GAMEPAD_BUTTON_GUIDE ||
-                                (game_is_d3() && e->gbutton.button == SDL_GAMEPAD_BUTTON_BACK))) {
+                                (game_is_d3() && e->gbutton.button == SDL_GAMEPAD_BUTTON_BACK &&
+                                 !d3_pad_view_is_minus(SDL_GetGamepadFromID(e->gbutton.which))))) {
             set_open(!g_open.load());
             return true;
         }

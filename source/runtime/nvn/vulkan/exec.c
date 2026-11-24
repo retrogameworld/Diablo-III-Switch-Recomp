@@ -1898,7 +1898,9 @@ static void compile_program(void *arg) {
     int bs = build_begin("modules vs/fs", p->code[0] ? p->code[0] : p->prep_vh, p->code[1] ? p->code[1] : p->prep_fh);
     size_t nv = 0, nf = 0;
     uint32_t *sv = vk_glsl_to_spirv(p->vi->msl, STAGE_VERTEX, "vs", &nv);
-    uint32_t *sf = sv ? vk_glsl_to_spirv(p->fi->msl, STAGE_FRAGMENT, "fs", &nf) : NULL;
+    char fname_[40];  // (LARECOMP_DUMP_GLSL names the fragment shader by its code address, as the draw log shows it)
+    snprintf(fname_, sizeof fname_, "fs_%llx", (unsigned long long)p->code[1]);
+    uint32_t *sf = sv ? vk_glsl_to_spirv(p->fi->msl, STAGE_FRAGMENT, fname_, &nf) : NULL;
     if (!sv || !sf) { free(sv); free(sf); atomic_store(&p->state, 2); build_end(bs); return; }
     p->nbinds = vk_reflect(sv, nv, p->binds, MAX_BIND);
     p->nbinds += vk_reflect(sf, nf, p->binds + p->nbinds, MAX_BIND - p->nbinds);
@@ -6529,6 +6531,16 @@ static void debug_draw(Prog *pr, CmdRec *r, bool indexed) {
         (unsigned long long)(indexed ? r->x[6] : r->x[4]), (unsigned long long)r->x[0], (unsigned long long)r->x[2],
         (unsigned long long)st.program->stages[0].code_addr, (unsigned long long)st.program->stages[1].code_addr,
         pr->vi->cbuf_mask, pr->fi->cbuf_mask, st.rt.ncolor);
+    {   // (LARECOMP_DUMP_GLSL: the drawn fragment shader's GLSL by the code address this log shows)
+        const char *dd = getenv("LARECOMP_DUMP_GLSL");
+        if (dd && pr->fi->msl) {
+            char p[600];
+            snprintf(p, sizeof p, "%s/draw_fs_%llx.glsl", dd, (unsigned long long)st.program->stages[1].code_addr);
+            FILE *f = fopen(p, "rb");
+            if (f) fclose(f);
+            else if ((f = fopen(p, "wb"))) { fputs(pr->fi->msl, f); fclose(f); }
+        }
+    }
     for (int i = 0; i < st.rt.ncolor; i++)
         if (st.rt.color[i]) LOG(" %ux%u/f%#x %p", st.rt.color[i]->width, st.rt.color[i]->height, st.rt.color[i]->format, (void *)st.rt.color[i]);
     if (st.rt.depth) LOG(" d%#x %p", st.rt.depth->format, (void *)st.rt.depth);
@@ -6560,6 +6572,17 @@ static void debug_draw(Prog *pr, CmdRec *r, bool indexed) {
         if (!t) { LOG("[draw]   tex%d: none\n", i); continue; }
         LOG("[draw]   tex%d: %p %ux%u f%#x lv %u -> %ux%u scale %.4f %.4f%s\n", i, (void *)t, t->width, t->height, t->format,
             b ? b->levels : 0, b ? b->width : 0, b ? b->height : 0, b ? b->sx : 0, b ? b->sy : 0, b && b->scalable ? " scalable" : "");
+        const char *ts = getenv("LARECOMP_DEBUG_SAVE_TEX");  // (debug: <w>x<h>: the first such texture -> build/tex_<w>x<h>.png)
+        unsigned tw, th;
+        static int saved;
+        if (ts && !saved && b && sscanf(ts, "%ux%u", &tw, &th) == 2 && t->width == tw && t->height == th) {
+            char p[64];
+            snprintf(p, sizeof p, "build/tex_%ux%u.png", tw, th);
+            renderer_save_texture_tex((TexBackend *)b, p);
+            saved = 1;
+            LOG("[draw]   saved %s (guest %llx stride %llu target %u flags %#x)\n", p, (unsigned long long)t->addr,
+                (unsigned long long)t->stride, t->target, t->flags);
+        }
     }
 }
 
@@ -6625,6 +6648,7 @@ static void copy_buffer_to_texture(uint64_t src, const TexRefRec *dst) {
 static void copy_texture_to_buffer(const TexRefRec *src, uint64_t dst) {
     NvnTexture *t = (NvnTexture *)(uintptr_t)src->tex;
     if (!t || !dst || dst < HEAP_BASE) return;
+    if (getenv("D3_LOG_COPIES")) { static int n; if (n++ < 400) LOG("[copy] tex %ux%u f%#x -> buffer\n", t->width, t->height, t->format); }
     t = alias_read(t);
     vk_end_pass();
     const FormatInfo *fi;
@@ -6779,6 +6803,7 @@ static void copy_texture(const TexRefRec *src, const TexRefRec *dst, uint64_t fl
     gp_mark(vk_cmd(), "copy texture %ux%u -> %ux%u", st_->width, st_->height, dt->width, dt->height);
     dl_note("copy texture %ux%u f%#x -> %ux%u f%#x (%p -> %p)", st_->width, st_->height, st_->format, dt->width, dt->height,
             dt->format, (void *)st_, (void *)dt);
+    if (getenv("D3_LOG_COPIES")) { static int n; if (n++ < 400) LOG("[copy] tex %ux%u f%#x -> %ux%u f%#x\n", st_->width, st_->height, st_->format, dt->width, dt->height, dt->format); }
     TexBackend *s = vk_tex(st_, false), *d = vk_tex(dt, true);
     renderer_mark_gpu_owned(dt);
     if (renderer_texture_presented(dt) && st_->width == dt->width && st_->height == dt->height) renderer_texture_mark_presented(st_);
