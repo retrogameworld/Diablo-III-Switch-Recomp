@@ -14,6 +14,65 @@ import sys
 GEN = r'<project folder>\src\d3recomp\generated\main'
 BACKUP = r'<project folder>\backups\generated'
 
+# ---- 20. mods (runtime/hle/d3_mods.c, GPL-2.0: from d3hack, through its 2.7.7 port in Diablo III Mobile; GitHub #4).
+# Read by tools/gen.py. Function entries that ask d3_mods_fn first (it may answer the whole function, or wrap it):
+MOD_ENTRIES = [
+    0x5ff00,   # IsSeasonsInitialized (offline season)
+    0x56b10,   # IsSignedInOnline (offline season, Challenge Rift)
+    0x1b0600,  # the mailbox's lobby check (offline season)
+    0x1bf5f0,  # ValidateHeroForPartyMember (offline season)
+    0x5282b0,  # PlayerCanPlayHandicap (all difficulties)
+    0x8875d0,  # Kanai's Cube material use (free cube)
+    0x0c8000,  # CPlayerGetMoveSpeedForStickInput (movement speed)
+    0x6cc700,  # PowerGetFormulaValueAtLevel (attack speed)
+    0x489280,  # ACDInventoryItemAllowedInSlot (equip in any slot)
+    0x88dee0,  # LootRollForAncientLegendary (ancient / primal drops)
+    0x8128a0,  # sInitializeWorld (god mode, debug flags)
+    0x066b10,  # StorageGetPublisherFile (Challenge Rift offline: its two files)
+    0x185f70,  # sOnGetChallengeRiftData (Challenge Rift: log)
+    0x185aa0,  # the Challenge Rift screen's error (log)
+    0x04edc0,  # ChallengeRiftRewardEarned_SaveToProfile (season tag)
+    0x7764e0,  # ChallengeRiftGrantRewardToPlayerIfEligible (season tag)
+]
+# Instruction variants, switched at run time (d3_mods_word: 0 = the game's own instruction): main offset ->
+# (the original word, checked by gen.py; [the variant word]) or [(a number, C written by hand)]. d3_mods.c k_sites has
+# the same sites with the setting that turns each on.
+MOD_VARIANTS = {
+    0x9e3350: (0x1e380018, [0x52800018]),   # portal: town portal / Book of Cain cast time: fcvtzs w24 -> mov w24,#0
+    0x7397d0: (0x1e28cd20, [0x1e2703e0]),   # cooldowns: fcsel s0 -> fmov s0,wzr
+    0x7f8a60: (0x14000002, [0x2a0003e0]),   #   b over "mov w0,wzr" -> into it (0 ticks)
+    0x9bc63c: (0x1e20cd08, [0x1e2703e8]),   #   fcsel s8 -> fmov s8,wzr
+    0x9bc928: (0x1e20cd08, [0x1e2703e8]),   #   fcsel s8 -> fmov s8,wzr
+    0x20636c: (0x1e213800, [0xd503201f]),   # craft: identify progress 1 - t/T -> 1 (instant)
+    0x40fa20: (0x11025908, [0x11001508]),   #   blacksmith: now + 150 ticks -> + 5
+    0x1dcfa4: (0x1101e108, [0x11000508]),   #   enchant: now + 120 ticks -> + 1
+    0x236d20: (0x321e0fe8, [0x52800008]),   #   Kanai's Cube: 60 / 180 / 120 / 240 ticks -> 0
+    0x236d24: (0x52801689, [0x52800009]),
+    0x236d28: (0x321d0fea, [0x5280000a]),
+    0x236d30: (0x321c0fe8, [0x52800008]),
+    0x6a265c: (0xbc685928, [0x1e2e1008]),   # gem100: legendary gem upgrade chance -> 1.0
+    0x349ba8: (0xbd406662, [0x1e2e1002]),   # gemfast: gem upgrade progress step -> 1.0
+    0x7dfa58: (0x2a0003f6, [(1, 'c->x[22] = (uint32_t)c->x[0]; c->x[0] = 150; '
+                                'c->x[23] = (uint32_t)(150u - (uint32_t)c->x[22]);')]),
+                                             # gem150: upgrades left = 150 - the gem's level (d3hack's code cave)
+    0x47ad7c: (0x97ffff41, [0xd503201f]),   # resource: bl ResourceAttributeSetFloat (the spend) -> nop
+    0x844ce4: (0x2a1f03e3, [0x52807ce3]),   # orbs: greater rift progress orbs on elite kills 0 -> 999
+    0x4fbae4: (0x540002e0, [0x14000017]),   # legendary: the same legendary already equipped: b.eq -> b (allowed)
+    0x97f65c: (0x528bf529, [0x528f78e9]),   # easykill: damage to an ACTOR_EASYKILL actor's target 1e15 -> 1.34e18
+    0x97f660: (0x72ab0c69, [0x72abb289]),
+    0x0bb550: (0xb9404789, [0x52801fe9]),   # reddmg: floating damage number colour -> red
+    0x504d78: (0x2a1403e0, [0x12800000]),   # dropany: the "can this item drop" answer -> -1 (any; Staff of Herding ...)
+    0x88f92c: (0x340000c8, [0xd503201f]),   # legendchance: Kadala / Kanai legendary roll: the checks -> always
+    0x88f934: (0x340009c8, [0xd503201f]),
+    0x88f93c: (0x54000c6c, [0x14000063]),   #   b.gt -> b
+    0x88fac4: (0x5400010d, [0xd503201f]),
+    0x88fae0: (0x54001a84, [0x140000d4]),   #   b.mi -> b
+    0x4fa01c: (0x34000520, [0x528000b9]),   # anygem: socket check: w25 = 5 (allowed) ...
+    0x4fa024: (0x7100091f, [0x14000028]),   #   ... and return it
+    0x4f99dc: (0x340000a8, [0xd503201f]),   # autopickup: the pickup check's early "no" -> on to the item's flag
+}
+_applied = set()  # (the PATCHES / REPLACES that apply_text put in, by index: check_applied)
+
 PATCHES = [
     # (file, anchor (must appear once), text inserted after it, declaration added after the first #include block)
     # 14. the game's event helpers (main+0x6900 signal / 0x6910 wait / 0x6920 timed wait): D3_CLOCK_LOG=4 logs the
@@ -83,6 +142,24 @@ PATCHES = [
 # 2. the "Disconnected from Diablo Network / Not Signed In" box: main menu (main+0x362884) and pause menu
 #    (main+0x2212b4) show it with SetVisible(1); d3_online_status_shown() decides instead (0 unless D3_MENU_ALL)
 REPLACES = [
+    # 21. mods: hero create's season confirmation (main+0x351ccc b.ne -> mov w1,#1) and SetGameParamsForHero's season of
+    #     a hero without data (main+0x1bd140 ldr w21 -> our season) - hle/d3_mods.c
+    ('main_117.c',
+     '    (void)(subs32(c, (uint32_t)c->x[8], 0x1ull));\n    if (COND_NE(c)) { goto L_7000351cfc; }\n',
+     '    (void)(subs32(c, (uint32_t)c->x[8], 0x1ull));\n    if (!d3_mods_season_confirm(c) && COND_NE(c)) { goto L_7000351cfc; }  /* d3_gen_patch.py mods */\n',
+     'int d3_mods_season_confirm(Cpu *c);  /* d3_gen_patch.py */\n'),
+    ('main_070.c',
+     'L_70001bd130:;\n    c->x[8] = (uint64_t)(0x700114a000ull);\n'
+     '    { uint64_t ea = c->x[8] + 0x9b8ull; uint64_t v = LD64(ea); c->x[8] = (uint64_t)(v); }\n'
+     '    { uint64_t ea = c->x[8] + 0x0ull; uint64_t v = LD64(ea); c->x[8] = (uint64_t)(v); }\n'
+     '    { uint64_t ea = c->x[8] + 0x18ull; uint64_t v = LD64(ea); c->x[8] = (uint64_t)(v); }\n'
+     '    { uint64_t ea = c->x[8] + 0x90ull; uint64_t v = LD32(ea); c->x[21] = (uint64_t)(v); }\n',
+     'L_70001bd130:;\n    c->x[8] = (uint64_t)(0x700114a000ull);\n'
+     '    { uint64_t ea = c->x[8] + 0x9b8ull; uint64_t v = LD64(ea); c->x[8] = (uint64_t)(v); }\n'
+     '    { uint64_t ea = c->x[8] + 0x0ull; uint64_t v = LD64(ea); c->x[8] = (uint64_t)(v); }\n'
+     '    { uint64_t ea = c->x[8] + 0x18ull; uint64_t v = LD64(ea); c->x[8] = (uint64_t)(v); }\n'
+     '    { uint64_t ea = c->x[8] + 0x90ull; uint64_t v = LD32(ea); c->x[21] = (uint64_t)(d3_mods_season_created((uint32_t)v)); }  /* d3_gen_patch.py mods */\n',
+     'uint32_t d3_mods_season_created(uint32_t v);  /* d3_gen_patch.py */\n'),
     # 16. the world (game simulation) thread's sleep between its steps (main+0x7c5cdc): above 60 fps it waits for the
     #     next frame in which the game counts a step (hle/d3_clock.c d3_sim_wait)
     ('main_230.c',
@@ -251,25 +328,54 @@ if __name__ == '__main__':
 # ---- used by tools/gen.py (and so by the game code builder on the player's PC: runtime/gamebuild.c): each generated
 # chunk of Diablo III's main program is patched as it is written, before it is compiled. Same rules as main() above.
 def apply_text(fn, s):
-    """The patched text of the generated chunk file `fn` (a base name, e.g. main_117.c)."""
+    """The patched text of the generated chunk file `fn` (a base name, e.g. main_117.c). A change goes in wherever its
+    anchor is (its file name is where it was when written: a change to the generator can move a function to another
+    chunk); check_applied() then says whether every one found its place."""
+    import re
+
     def add_decl(s, decl):
         if decl in s:
             return s
         i = s.index('\n', s.index('#include "simd.h"')) + 1
         return s[:i] + decl + s[i:]
+
+    def here(f, anchor):
+        return f == fn or re.search(r'70[0-9a-f]{8}', anchor) is not None
     for f, old, new in UPGRADES:
         if f == fn and old in s:
             s = s.replace(old, new)
-    for f, anchor, insert, decl in PATCHES:
-        if f != fn or insert in s:
+    for k, (f, anchor, insert, decl) in enumerate(PATCHES):
+        if not here(f, anchor):
             continue
-        if s.count(anchor) != 1:
-            raise SystemExit(f'd3_gen_patch: {fn}: anchor not found once')
+        if insert in s:
+            _applied.add(('P', k))
+            continue
+        n = s.count(anchor)
+        if n == 0:
+            continue
+        if n != 1:
+            raise SystemExit(f'd3_gen_patch: {fn}: anchor of change P{k} found {n} times')
         s = add_decl(s.replace(anchor, anchor + insert, 1), decl)
-    for f, old, new, decl in REPLACES:
-        if f != fn or new in s:
+        _applied.add(('P', k))
+    for k, (f, old, new, decl) in enumerate(REPLACES):
+        if not here(f, old):
             continue
-        if s.count(old) != 1:
-            raise SystemExit(f'd3_gen_patch: {fn}: anchor not found once')
+        if new in s:
+            _applied.add(('R', k))
+            continue
+        n = s.count(old)
+        if n == 0:
+            continue
+        if n != 1:
+            raise SystemExit(f'd3_gen_patch: {fn}: anchor of change R{k} found {n} times')
         s = add_decl(s.replace(old, new, 1), decl)
+        _applied.add(('R', k))
     return s
+
+
+def check_applied():
+    """After all chunks (tools/gen.py): every change found its place."""
+    miss = [f'P{k} ({p[0]})' for k, p in enumerate(PATCHES) if ('P', k) not in _applied]
+    miss += [f'R{k} ({r[0]})' for k, r in enumerate(REPLACES) if ('R', k) not in _applied]
+    if miss:
+        raise SystemExit('d3_gen_patch: not found in the generated code: ' + ', '.join(miss))

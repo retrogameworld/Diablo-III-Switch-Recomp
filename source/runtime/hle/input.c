@@ -219,7 +219,18 @@ int d3_menu_open(void) {  // (also the prompt atlas's labels: nvn/texpatch.c, vu
     extern Module g_modules[4];
     extern int g_nmodules;
     if (!game_is_d3() || g_nmodules < 1 || g_modules[0].size <= 0x18426b0) return 0;
-    return *(volatile uint8_t *)(uintptr_t)(g_modules[0].base + 0x18426b0) != 0;
+    if (*(volatile uint8_t *)(uintptr_t)(g_modules[0].base + 0x18426b0) != 0) return 1;  // (the game's own menus in play)
+    // (outside the world - the main menu and its pages: Options, Challenges, Hero Profile... - the game's flag stays 0,
+    // so the in-play layout applied there: R1 was ZL, which switches nothing - GitHub #2, "the right bumper doesn't
+    // work when navigating between tabs in some menus". No world drawn in the last second: the menus' layout too.)
+    extern uint64_t d3_world_seen_ns(void);
+    extern uint64_t SDL_GetTicksNS(void);
+    uint64_t w = d3_world_seen_ns();
+    int m = !w || SDL_GetTicksNS() - w > 1000000000ull;
+    static int last = -1;
+    if (m != last && getenv("D3_LOG_MENU_LAYOUT")) LOG("[input] shoulder layout: %s\n", m ? "menus (no world)" : "play");
+    last = m;
+    return m;
 }
 static uint64_t d3_menu_shoulders(uint64_t b, uint32_t host) {
     if (!d3_menu_open()) return b;
@@ -424,6 +435,9 @@ int input_pad_family(void) {
 // (Diablo III) its button pictures in Xbox style (A / B / X / Y, LB / RB / LT / RT) or PlayStation style: "Button icons"
 // when it is set to a style, else the controller in use. A player's report (2026-11-18): Xbox chosen, PlayStation
 // pictures still shown - only the connected controller was asked. (Nintendo: PlayStation, the port's default look.)
+// (Diablo III) "Button icons" = Nintendo: the game's own Switch button pictures, left as they are (GitHub #6: Nintendo
+// chosen, PlayStation pictures shown). Auto keeps PlayStation / Xbox by the controller.
+int d3_prompts_nintendo(void) { return g_settings.prompts == PROMPTS_NINTENDO; }
 int d3_prompts_xbox(void) {
     switch (g_settings.prompts) {
     case PROMPTS_XBOX: return 1;
@@ -925,6 +939,7 @@ static void fill_state(Cpu *c) {
     }
 d3_skip_ticks:;
     if (game_is_d3()) { extern void d3_ui_sound_run(Cpu *c); d3_ui_sound_run(c); }  // (our menu's clicks: d3_menu.c)
+    if (game_is_d3()) { extern void d3_mods_pump(Cpu *c); d3_mods_pump(c); }  // (offline seasons / buffs: d3_mods.c)
     if (game_is_d3()) { extern void d3_music_tick(Cpu *c); d3_music_tick(c); }  // (Music volume: d3_volume.c)
     bool menu = menu_input_captured();  // the overlay menu / name entry has the controls (typing there isn't for the game)
     uint64_t held = key_buttons | pad_buttons;

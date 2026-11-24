@@ -60,7 +60,14 @@ bool widescreen_ui_pane_partial(const float *u, uint64_t size) {
 // Off in rooms that should keep 16:9 framing (interiors, dungeons) -- see widescreen_update.
 static bool g_allowed = true;
 static bool g_indoor;
-bool widescreen_allowed(void) { return g_allowed && g_settings.aspect == ASPECT_UNLOCKED && !ENV("LARECOMP_NO_WIDESCREEN"); }
+// (Diablo III: never reshaped. Its camera and UI are not widened yet, so a wide window only stretched the 16:9 picture
+// (GitHub #8, 32:9: everything wide and flat; in a hidden test at 32:9 squeezed into a 16:9 box). It is shown 16:9 with
+// bars until real ultrawide support exists. D3_WIDE_TEST=1: reshaped as before, for that work.)
+bool widescreen_allowed(void) {
+    extern bool game_is_d3(void);
+    if (game_is_d3() && !ENV("D3_WIDE_TEST")) return false;
+    return g_allowed && g_settings.aspect == ASPECT_UNLOCKED && !ENV("LARECOMP_NO_WIDESCREEN");
+}
 void widescreen_set_allowed(bool on) { g_allowed = on; }
 
 // Interiors and dungeons use cameras that never load the patched overworld aspect (site 0). Count

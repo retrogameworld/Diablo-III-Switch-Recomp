@@ -27,6 +27,8 @@ Settings g_settings = {
     .display_mode = DISPLAY_BORDERLESS,  // (the tester 2026-11-15: borderless full screen by default)
     .volume = 1.0f,
     .music_volume = 1.0f,
+    .d3_move = 100,
+    .d3_atk = 100,
     .effects_volume = 1.0f,
     .reverb = true,
     .movie_audio = true,
@@ -188,6 +190,12 @@ void settings_load(void) {
         else if (!strcmp(key, "volume")) g_settings.volume = (float)atof(val);
         else if (!strcmp(key, "music_volume")) g_settings.music_volume = (float)atof(val), g_music_key = true;
         else if (!strcmp(key, "effects_volume")) g_settings.effects_volume = (float)atof(val);
+        else if (!strcmp(key, "d3_season")) g_settings.d3_season = atoi(val);
+        else if (!strcmp(key, "d3_buffs")) g_settings.d3_buffs = (unsigned)strtoul(val, NULL, 0);
+        else if (!strcmp(key, "d3_cheats")) g_settings.d3_cheats = (unsigned)strtoul(val, NULL, 0);
+        else if (!strcmp(key, "d3_loot")) g_settings.d3_loot = atoi(val);
+        else if (!strcmp(key, "d3_move")) g_settings.d3_move = atoi(val);
+        else if (!strcmp(key, "d3_atk")) g_settings.d3_atk = atoi(val);
         else if (!strcmp(key, "reverb")) g_settings.reverb = atoi(val) != 0;
         else if (!strcmp(key, "movie_audio")) g_settings.movie_audio = atoi(val) != 0;
         else if (!strcmp(key, "sound_mono")) g_settings.sound_mono = atoi(val) != 0;
@@ -296,6 +304,9 @@ void settings_save(void) {
     fprintf(f, "volume = %.2f\n", g_settings.volume);
     fprintf(f, "music_volume = %.2f\n", g_settings.music_volume);
     fprintf(f, "effects_volume = %.2f\n", g_settings.effects_volume);
+    fprintf(f, "d3_season = %d\nd3_buffs = 0x%x\nd3_cheats = 0x%x\n", g_settings.d3_season, g_settings.d3_buffs,
+            g_settings.d3_cheats);
+    fprintf(f, "d3_loot = %d\nd3_move = %d\nd3_atk = %d\n", g_settings.d3_loot, g_settings.d3_move, g_settings.d3_atk);
     fprintf(f, "reverb = %d\n", g_settings.reverb);
     fprintf(f, "movie_audio = %d\n", g_settings.movie_audio);
     fprintf(f, "sound_mono = %d\n", g_settings.sound_mono);

@@ -8,6 +8,23 @@ services, the NVN graphics API, audio output, controllers, saves - are reimpleme
 **No game files are or will be included.** The game is built from the player's own legally dumped copy on their own
 machine.
 
+## What's new (2026-11-24)
+- **Mods** in PC Settings > Mods: offline seasons 14-40 with the Season Journey and seasonal heroes, season buffs and
+  events, every cheat from d3hack moved to this game version (god mode, no cooldowns, instant crafting, movement and
+  attack speed, always ancient / primal, auto pickup and more) and Challenge Rift offline. All off by default. Thanks
+  to d3hack and Diablo III Mobile, see below. (#4)
+- **Open source under the GPL version 2** (it was "view only" before).
+- **Voice packs:** your own voice pack NSPs in the `data` folder are unpacked once and the game can use that language.
+- **Fixes:**
+  - Nintendo button prompts now show the white A / B icons. (#6)
+  - Controller layout set to Xbox now shows Xbox prompts with any controller.
+  - The name keyboard can type Cyrillic, Greek and accented letters. (#5)
+  - The Challenges entry (achievements) is back on the More page offline. (#3)
+  - RB / LB switch tabs in menus again. (#2)
+  - Ultrawide (21:9, 32:9) screens: the game stays 16:9 with black bars instead of stretching. (#8)
+- **After updating, the first start builds the game code again, once** (a progress window, like the first setup).
+  Your saves and settings stay.
+
 ## Requirements
 - **Your own copy of the game, as NSP files:** the Diablo III: Eternal Collection **base game** and the **2.7.7 update**
   (v1441792). Other versions of the game are not supported - the recompiled code is tied to that exact build, and the
@@ -40,11 +57,29 @@ Video > Menu fonts) - copied on your PC only.
 - Internal resolution from native and 720p up to 8K; FSR 1 upscaling with sharpening; SMAA
 - 60 fps (recommended) and 120 fps (experimental, see below)
 - Borderless, exclusive full screen or windowed
-- PlayStation or Xbox button prompts and controller pictures, chosen by the controller in use
+- PlayStation, Xbox or Nintendo button prompts and controller pictures, chosen by the controller in use or in PC
+  Settings > Controls
 - PC Settings in the game's own style, from the main menu or the Share / PS button: video, audio (Extra Volume,
   Extra Music Volume, Stereo / Mono), controls - with the game's own menu sounds and highlight, made from your copy
 - Offline play: online-only menus, Season / Leaderboard / store entries and "Not Signed In" messages are gone;
   "Exit Game" on the main menu
+
+## Mods (PC Settings > Mods)
+All off by default; changes apply after a restart. Back up your saves before trying them.
+- **Offline seasons 14-40:** make seasonal heroes offline, with the Season Journey.
+- **Season buffs and events:** the chosen season's own theme, or any of 20 buffs / events at once (Kanai's Powers,
+  Ethereal Items, Double Treasure Goblins, Soul Shards, ...).
+- **Cheats:** all difficulties, free Kanai's Cube, instant town portal, no cooldowns, instant crafting (identify,
+  craft, enchant, cube), gem upgrades always work / faster / straight to level 150, infinite resource, extra greater
+  rift orbs, the same legendary twice, easy kill damage, red damage numbers, drop any item, guaranteed legendaries
+  from Kadala and the cube, any gem in any socket, auto pickup, god mode, the developers' debug flags, any item in any
+  slot.
+- **Movement and attack speed:** 100% to 300%.
+- **Legendary drops:** always ancient, always primal, no primal or no ancient.
+- **Challenge Rift offline:** the weekly Challenge Rift without servers (Game Settings > Mode > Challenge Rifts; the
+  game unlocks it after a solo greater rift). It needs the rift files from d3hack, which are not included here: copy
+  the files from d3hack's `examples/config/d3hack-nx/rift_data` folder (`challengerift_config.dat` and
+  `challengerift_00.dat` ...) into a folder named `challenge_rifts` inside the `data` folder. A new rift every week.
 
 ## Known issues
 - **120 fps is experimental.** The game steps its world 60 times a second; at 120 fps moving characters can now and
@@ -67,15 +102,17 @@ Video > Menu fonts) - copied on your PC only.
   watched for the double-image pattern and corrected.
 
 ## Source code and license
-The source code of this port is in the `source` folder, for reading. **It is source-available, not open source:**
-you may read it and use the released program for yourself, but you may not copy, modify, redistribute or republish it
-(or make another port from it) without permission. See [LICENSE](LICENSE). The parts that come from other projects keep
+The source code of this port is in the `source` folder. It is **open source under the GNU GPL version 2** (see
+[LICENSE](LICENSE)): you may use, study, share and change it under the GPL's terms. The Mods (offline seasons, season
+buffs, cheats) are derived from [d3hack](https://github.com/god-jester/d3hack) by god-jester through its 2.7.7 port in
+[Diablo III Mobile](https://github.com/Desm0nt/diablo3-port), both GPL-2.0 - thanks! The parts from other projects keep
 their own licenses - most importantly **LAS Recomp**, the base of this port, which is MIT (see `source/LICENSE`).
 
 The source contains no game code, game files, keys or game assets: the game's code is generated on each player's PC
 from their own copy.
 
 ## Credits
+- **d3hack** by god-jester (GPL-2.0) and **Diablo III Mobile** by Desm0nt (its 2.7.7 port; GPL-2.0) - the Mods
 - **LAS Recomp**, a static recompilation of The Legend of Zelda: Link's Awakening for Switch (MIT) - the base this
   project is built from
 - **Ryujinx** (MIT) - references for the audio renderer and the shader decoder

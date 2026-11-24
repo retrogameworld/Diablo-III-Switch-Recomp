@@ -39,6 +39,7 @@ extern "C" void vk_overlay_end(void *window_cmd, void *cmd);
 extern "C" {
 #include "../hle.h"
 #include "../settings.h"
+#include "../hle/d3_mods.h"
 #include "menu.h"
 void input_reset(void);
 void save_editor_draw(float scale);  // save_editor.mm
@@ -553,12 +554,18 @@ static void fonts_add(float density) {
     const char *paths[] = {"/System/Library/Fonts/Avenir Next.ttc", "/System/Library/Fonts/Helvetica.ttc",
                            "C:/Windows/Fonts/segoeui.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                            "/usr/share/fonts/TTF/DejaVuSans.ttf", "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf", bundled};
+    // (the text a player types - hero names, the on-screen keyboard - in more than English: Latin with accents,
+    // Greek, Cyrillic. GitHub #5: a Russian name showed as ??????, ImGui had only the basic Latin letters)
+    static const ImWchar text_ranges[] = {0x0020, 0x024F, 0x0370, 0x03FF, 0x0400, 0x052F, 0x1E00, 0x1EFF,
+                                          0x2000, 0x206F, 0x20A0, 0x20CF, 0x2DE0, 0x2DFF, 0xA640, 0xA69F, 0};
+    ImFontConfig tcfg = cfg;
+    tcfg.GlyphRanges = text_ranges;
     for (const char *p : paths) {
         if (!p) continue;
         if (FILE *f = fopen(p, "rb")) fclose(f);  // a missing file is an assertion in ImGui, not a NULL return
         else continue;
-        if (!g_font) g_font = io.Fonts->AddFontFromFileTTF(p, 34, &cfg);
-        if (g_font && !g_font_big) { ImFontConfig b = cfg; b.FontNo = 0; g_font_big = io.Fonts->AddFontFromFileTTF(p, 56, &b); }
+        if (!g_font) g_font = io.Fonts->AddFontFromFileTTF(p, 34, &tcfg);
+        if (g_font && !g_font_big) { ImFontConfig b = tcfg; b.FontNo = 0; g_font_big = io.Fonts->AddFontFromFileTTF(p, 56, &b); }
     }
     // the menu window itself: Baloo 2 SemiBold, as on the start screen (shipped, OFL), at its Settings window's sizes; the
     // FPS counter, overlays and on-screen keyboard keep the fonts above
@@ -682,6 +689,7 @@ static void tab_display(void) {
     opt_begin("##video", scale);
     opt_section("Display");
     const char *aspects[] = {"Unlocked", "Original 16:9"};
+    if (!game_is_d3())  // (Diablo III: always 16:9 for now - hle/widescreen.c widescreen_allowed)
     opt_choice("Aspect ratio", &g_settings.aspect, aspects, 2, ASPECT_UNLOCKED,
                game_is_d3() ? "Unlocked: the view fills the window, so wider screens show more of the world, up to "
                               "ultrawide. Original 16:9: the game's own framing, with bars."
@@ -896,6 +904,60 @@ static void tab_cosmetics(void) {
     opt_section("Screen");
     opt_choice("Screen filter", &g_settings.screen_filter, g_screen_filters, N_SCREEN_FILTERS, 0,
                "A filter over the whole picture, the HUD included.");
+    opt_end();
+}
+
+// Diablo III's mods (GitHub #4): offline seasons, season buffs, cheats - runtime/hle/d3_mods.c (GPL-2.0, from d3hack via
+// Diablo III Mobile). All off by default; the game reads them at start.
+static void tab_mods(void) {
+    opt_begin("##mods", ImGui::GetFontSize() / 34);
+    opt_section("Seasons");
+    static const char *seasons[28];
+    static char snames[28][24];
+    if (!seasons[0]) {
+        seasons[0] = "Off";
+        for (int i = 1; i < 28; i++) snprintf(snames[i], sizeof snames[i], "Season %d", 13 + i), seasons[i] = snames[i];
+    }
+    int si = g_settings.d3_season >= 14 && g_settings.d3_season <= 40 ? g_settings.d3_season - 13 : 0;
+    if (opt_choice("Offline Season", &si, seasons, 28, 0,
+                   "Play a season offline: new heroes can be made seasonal, with that season's journey and rewards. "
+                   "Applies after a restart. Back up your saves first."))
+        g_settings.d3_season = si ? 13 + si : 0;
+    bool theme = (g_settings.d3_buffs & D3_BUFFS_THEME) != 0;
+    if (opt_toggle("Season Theme Buff", &theme, false, "The chosen season's own theme (its buff), on top of the ones below."))
+        g_settings.d3_buffs = theme ? g_settings.d3_buffs | D3_BUFFS_THEME : g_settings.d3_buffs & ~D3_BUFFS_THEME;
+    opt_section("Season Buffs And Events");
+    for (int i = 0; i < D3_BUFF_COUNT; i++) {
+        bool on = (g_settings.d3_buffs >> i & 1) != 0;
+        if (opt_toggle(d3_buff_label(i), &on, false, "A season buff or event, for every hero. Applies after a restart."))
+            g_settings.d3_buffs = on ? g_settings.d3_buffs | 1u << i : g_settings.d3_buffs & ~(1u << i);
+    }
+    opt_section("Cheats");
+    for (int i = 0; i < D3_CHEAT_COUNT; i++) {
+        const char *desc = "";
+        const char *label = d3_cheat_info(i, &desc);
+        char full[300];
+        snprintf(full, sizeof full, "%s Applies after a restart.", desc);
+        bool on = (g_settings.d3_cheats >> i & 1) != 0;
+        if (opt_toggle(label, &on, false, full))
+            g_settings.d3_cheats = on ? g_settings.d3_cheats | 1u << i : g_settings.d3_cheats & ~(1u << i);
+    }
+    static const char *speeds[] = {"100%", "125%", "150%", "175%", "200%", "250%", "300%"};
+    static const int speed_pct[] = {100, 125, 150, 175, 200, 250, 300};
+    int mi = 0, ai = 0;
+    for (int i = 0; i < 7; i++) {
+        if (g_settings.d3_move == speed_pct[i]) mi = i;
+        if (g_settings.d3_atk == speed_pct[i]) ai = i;
+    }
+    if (opt_choice("Movement Speed", &mi, speeds, 7, 0, "How fast heroes run. 100% is the game's own. Applies after a restart."))
+        g_settings.d3_move = speed_pct[mi];
+    if (opt_choice("Attack Speed", &ai, speeds, 7, 0, "How fast heroes attack. 100% is the game's own. Applies after a restart."))
+        g_settings.d3_atk = speed_pct[ai];
+    static const char *loot[D3L_COUNT] = {"Normal", "Always Ancient", "Always Primal", "No Primal", "No Ancient"};
+    int li = g_settings.d3_loot >= 0 && g_settings.d3_loot < D3L_COUNT ? g_settings.d3_loot : 0;
+    if (opt_choice("Legendary Drops", &li, loot, D3L_COUNT, 0,
+                   "Ancient and Primal legendaries: the game's own chance, always, or never. Applies after a restart."))
+        g_settings.d3_loot = li;
     opt_end();
 }
 
@@ -1126,11 +1188,11 @@ static void tabs_body(float scale, bool in_game, void (*prelaunch)(float)) {
     int ntabs = 0;
     if (prelaunch) tabs[ntabs++] = {"Prelaunch", -1, true};
     static const char *names[] = {"Video", "Audio", "Save Editor", "Randomizer", "Warp", "Cheats", "Gameplay",
-                                  "Cosmetics", "Controls", "Quit"};
-    static const int order[] = {8, 0, 1, 6, 7, 3, 5, 4, 2, 9};  // Controls, Video, Audio, Gameplay, Cosmetics, Randomizer,
+                                  "Cosmetics", "Controls", "Quit", "Mods"};
+    static const int order[] = {8, 0, 1, 6, 7, 3, 5, 4, 2, 10, 9};  // (10 Mods: Diablo III only, hle/d3_mods.c)  // Controls, Video, Audio, Gameplay, Cosmetics, Randomizer,
                                                                 // Cheats, Warp, Save Editor, Quit (ids stay: test hooks)
     for (int i : order)  // (Quit: in game only - the start screen has its own QUIT, and an eleventh tab cut names short)
-        if ((i != 9 || !prelaunch) && !(game_is_d3() && i >= 2 && i <= 7))  // (Diablo III: Link's Awakening tabs out)
+        if ((i != 9 || !prelaunch) && !(game_is_d3() && i >= 2 && i <= 7) && (i != 10 || game_is_d3()))  // (Diablo III: Link's Awakening tabs out)
             tabs[ntabs++] = {names[i], i, in_game || (i != 2 && i != 4 && i != 5)};
     int cur = 0;  // g_tab / g_tab_request hold ids
     for (int i = 0; i < ntabs; i++) if (tabs[i].id == g_tab) cur = i;
@@ -1310,6 +1372,7 @@ static void tabs_body(float scale, bool in_game, void (*prelaunch)(float)) {
                 case 7: tab_cosmetics(); break;
                 case 8: controls_tab_draw(scale); break;
                 case 9: tab_quit(scale, in_game); break;
+                case 10: tab_mods(); break;
                 }
                 static const char *scroll_test = getenv("LARECOMP_MENU_SCROLL");  // test hook: page scroll, 0..1
                 if (scroll_test) ImGui::SetScrollY(ImGui::GetScrollMaxY() * (float)atof(scroll_test));

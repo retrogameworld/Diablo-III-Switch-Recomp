@@ -48,6 +48,11 @@ typedef struct {
     bool reverb;         // room reverb effect
     bool movie_audio;
     int sound_mono;      // 0 stereo, 1 mono (both speakers the same; the tester 2026-11-15)
+    int d3_season;       // (Diablo III mods, hle/d3_mods.c) offline season: 0 off, 14..40
+    unsigned d3_buffs;   // season buffs / events: bit mask (bit 31: the season's own theme)
+    unsigned d3_cheats;  // cheats: bit mask (D3C_*)
+    int d3_loot;         // legendary drops: D3L_* (0 = the game's own)
+    int d3_move, d3_atk; // movement / attack speed in percent (100 = the game's own)
     bool show_fps;
     bool dpad_move;      // the d-pad (and arrow keys) move Link like the stick
     bool rumble;         // controller vibration from the game (runtime/hle/input.c)

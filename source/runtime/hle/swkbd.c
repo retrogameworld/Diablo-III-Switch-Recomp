@@ -20,11 +20,20 @@ HLE_FUNC("_ZN2nn5swkbd12ShowKeyboardEPNS0_6StringERKNS0_15ShowKeyboardArgE", swk
     int max_len = (int)*(const int32_t *)(uintptr_t)(arg + 0x3ac);
     uint32_t off = *(const uint32_t *)(uintptr_t)(arg + 0x3c0), n = *(const uint32_t *)(uintptr_t)(arg + 0x3c4);
     uint64_t wb = LD64(arg + 0x4d0);
-    char initial[96] = "";
-    for (uint32_t i = 0; wb && i < n && i < sizeof initial - 1; i++) {
-        uint16_t ch = *(const uint16_t *)(uintptr_t)(wb + off + 2 * i);
-        initial[i] = ch < 0x80 ? (char)ch : '?';
+    char initial[96] = "";  // (UTF-16 -> UTF-8: a Russian / accented suggested name was all '?' - GitHub #5)
+    size_t o = 0;
+    for (uint32_t i = 0; wb && i < n && o + 4 < sizeof initial; i++) {
+        uint32_t ch = *(const uint16_t *)(uintptr_t)(wb + off + 2 * i);
+        if (ch >= 0xd800 && ch < 0xdc00 && i + 1 < n) {
+            uint32_t lo = *(const uint16_t *)(uintptr_t)(wb + off + 2 * (i + 1));
+            if (lo >= 0xdc00 && lo < 0xe000) ch = 0x10000 + ((ch - 0xd800) << 10) + (lo - 0xdc00), i++;
+        }
+        if (ch < 0x80) initial[o++] = (char)ch;
+        else if (ch < 0x800) initial[o++] = (char)(0xc0 | ch >> 6), initial[o++] = (char)(0x80 | (ch & 0x3f));
+        else if (ch < 0x10000) initial[o++] = (char)(0xe0 | ch >> 12), initial[o++] = (char)(0x80 | ((ch >> 6) & 0x3f)), initial[o++] = (char)(0x80 | (ch & 0x3f));
+        else initial[o++] = (char)(0xf0 | ch >> 18), initial[o++] = (char)(0x80 | ((ch >> 12) & 0x3f)), initial[o++] = (char)(0x80 | ((ch >> 6) & 0x3f)), initial[o++] = (char)(0x80 | (ch & 0x3f));
     }
+    initial[o] = 0;
     char text[96];
     int ok = menu_keyboard_run(initial, max_len, text, sizeof text);
     if (!ok) snprintf(text, sizeof text, "%s", initial);  // cancelled: keep what was there

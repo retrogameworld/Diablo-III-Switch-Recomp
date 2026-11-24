@@ -40,7 +40,8 @@ int d3_menu_hidden(uint32_t menu, uint32_t id) {
     if (exit_entry() && (id == 11 || id == 12)) return menu == 0 ? 2 : 1;
     if (id == 12 && !getenv("D3_NO_PC_SETTINGS_ENTRY")) return menu == 0 ? 2 : 1;
     switch (id) {
-    case 1: case 3: case 5: case 6: case 10: case 11: case 12: case 17: case 18: case 21: case 22: case 23: case 26:
+    // (17, challenges, shown again: they work offline - GitHub #3, "no way to see the challenges achieved")
+    case 1: case 3: case 5: case 6: case 10: case 11: case 12: case 18: case 21: case 22: case 23: case 26:
         return 1;
     default:
         return 0;

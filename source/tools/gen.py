@@ -359,6 +359,8 @@ class Module:
             out.append('}')
             return out
         out.append(f'    FN_ENTER({hx(entry)});')
+        if entry - self.base in D3_ENTRY:  # (Diablo III mods: the runtime may answer the whole function - hle/d3_mods.c)
+            out.append(f'    if (d3_mods_fn(c, {hx(entry)})) return;')
         batch = []
         refs = set()
 
@@ -385,6 +387,8 @@ class Module:
             labels = set(labels)
             for a in rando_here:
                 for w in RANDO_CODE[a - self.base]:
+                    if isinstance(w, tuple):
+                        continue
                     v = self.lifter.lift(w, a)
                     if v.kind in ('b', 'bcond') and isinstance(v.target, int) and entry <= v.target < end:
                         labels.add(v.target)
@@ -404,11 +408,15 @@ class Module:
                 out.append(f'L_{a:x}:;')
             if a - self.base in RANDO_CODE:  # randomizer patch site: the active seed picks the instruction
                 flush()
-                out.append(f'    {{ extern uint32_t rando_word(uint64_t); uint32_t rw = rando_word({hx(a)});')
+                out.append(f'    {{ extern uint32_t {VARIANT_FN}(uint64_t); uint32_t rw = {VARIANT_FN}({hx(a)});')
                 first = True
                 for w in RANDO_CODE[a - self.base]:
-                    v = self.lifter.lift(w, a)
-                    out.append(f'    {"if" if first else "else if"} (rw == {hx(w)}) {{ ' + ' '.join(self.render_single(v, a, jump, refs)) + ' }')
+                    if isinstance(w, tuple):  # (Diablo III mods: C written by hand, picked by its number - d3_gen_patch.py)
+                        code = w[1]
+                        w = w[0]
+                    else:
+                        code = ' '.join(self.render_single(self.lifter.lift(w, a), a, jump, refs))
+                    out.append(f'    {"if" if first else "else if"} (rw == {hx(w)}) {{ ' + code + ' }')
                     first = False
                 out.append('    else { ' + ' '.join(self.render_single(ins, a, jump, refs)) + ' } }')
                 last = 'op'
@@ -497,6 +505,8 @@ import json as _json
 import os as _os
 _rv = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'rando', 'patch_variants.json')
 RANDO_CODE = {}
+VARIANT_FN = 'rando_word'  # (the runtime function that picks a variant: Diablo III's mods use d3_mods_word)
+D3_ENTRY = set()  # (Diablo III: functions whose entry asks d3_mods_fn first)
 if _os.path.exists(_rv):
     for _a, _ws in _json.load(open(_rv))['code'].items():
         RANDO_CODE[int(_a, 16)] = [int(_w, 16) for _w in _ws]
@@ -538,10 +548,18 @@ def main():
     m = Module(args.name, args.nso, args.base, args.simd)
     d3 = args.name == 'main' and m.nso.build_id.upper().startswith(D3_MAIN_BUILD_ID)
     if d3:  # Diablo III: no Link's Awakening address table or patches; its own small ones (d3_gen_patch.py)
-        global D3_PATCH
+        global D3_PATCH, RANDO_CODE, VARIANT_FN, D3_ENTRY
         version = None
         import d3_gen_patch
         D3_PATCH = d3_gen_patch
+        # mods (hle/d3_mods.c): switchable instruction variants (the randomizer's mechanism, not its Link's Awakening
+        # sites) and function entries; every original word is checked, so a wrong address stops here
+        RANDO_CODE, VARIANT_FN, D3_ENTRY = {}, 'd3_mods_word', set(d3_gen_patch.MOD_ENTRIES)
+        for off, (orig, alts) in d3_gen_patch.MOD_VARIANTS.items():
+            w = m.nso.u32(off)
+            if w != orig:
+                sys.exit(f'{args.name}: mod site main+{off:#x} is {w:#010x}, expected {orig:#010x}')
+            RANDO_CODE[off] = alts
         print(f'{args.name}: Diablo III (build {m.nso.build_id[:16]}), Diablo III patches', file=sys.stderr)
     elif args.name == 'main':
         global HOOKS, PATCHES
@@ -647,6 +665,8 @@ def main():
                 break
         path = os.path.join(args.outdir, f'{args.name}_{nchunks:03d}.c')
         text = ['#include "cpu.h"\n' + ('#include "simd.h"\n' if m.lifter.sc else '')]
+        if any(a - m.base in D3_ENTRY for a in fns):
+            text.append('int d3_mods_fn(Cpu *c, uint64_t addr);\n')
         text += [f'void {fname(r)}(Cpu *c);\n' for r in sorted(refs)]
         text += [f'void {sanitize(hle[a])}(Cpu *c);\n' for a in sorted(set(hle) & set(fns))]
         text += ['\n'.join(body), '\n']
@@ -672,6 +692,7 @@ def main():
         f.write(f'const uint64_t {args.name}_fn_count = {len(order)};\n')
         write_if_changed(os.path.join(args.outdir, f'{args.name}_table.c'), f.getvalue())
     if d3:
+        D3_PATCH.check_applied()
         write_if_changed(os.path.join(args.outdir, 'main_build_id.txt'), D3_MAIN_BUILD_ID + '\n')
     elif args.name == 'main':  # (what this code was generated from: the Makefile's game code library id, GAMELIB_BUILD_ID)
         write_if_changed(os.path.join(args.outdir, 'main_build_id.txt'), game_addresses.VERSIONS[version][1] + '\n')

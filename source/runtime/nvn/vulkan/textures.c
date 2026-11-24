@@ -865,7 +865,8 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
     bool restyle = b->tp > 0 && b->tp <= TEXPATCH_RECOLOUR_BASE && b->uploaded && b->tp_gen != texpatch_generation();
     // (Diablo III's prompt atlas: drawn again when the game's menus open or close - its shoulder labels differ, texpatch.c)
     extern int d3_menu_open(void), input_pad_family(void);
-    int d3_mode = b->uploaded && b->data_hash == 0x450cd94995bd5c90ull ? d3_menu_open() + 2 * (d3_prompts_xbox()) : -1;
+    extern int d3_prompts_nintendo(void);
+    int d3_mode = b->uploaded && b->data_hash == 0x450cd94995bd5c90ull ? d3_menu_open() + 2 * (d3_prompts_xbox()) + 4 * d3_prompts_nintendo() : -1;
     if (d3_mode >= 0 && b->tp_gen != (uint32_t)d3_mode + 1) restyle = true;
     if (b->uploaded && b->hd && b->data_hash == D3_CTRL_PAGE && b->hd_variant != (d3_prompts_xbox())) restyle = true;
     // The OS's page write tracking (exec.c vk_pages_changed, shared with the vertex cache): texture memory the CPU
@@ -909,7 +910,8 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
         extern int d3_menu_open(void), d3_prompts_xbox(void), g_d3_label_menu, g_d3_label_xbox;
         g_d3_label_menu = d3_menu_open();
         g_d3_label_xbox = d3_prompts_xbox();
-        b->tp_gen = (uint32_t)(g_d3_label_menu + 2 * g_d3_label_xbox) + 1;
+        extern int d3_prompts_nintendo(void);
+        b->tp_gen = (uint32_t)(g_d3_label_menu + 2 * g_d3_label_xbox + 4 * d3_prompts_nintendo()) + 1;
     }
     if (hd_replace(t, b, h, mf.vf)) { b->data_hash = h; b->uploaded = true; return; }
     if (b->hd) { hd_release(b); destroy_image(b); create_image(t, b); }  // (other contents now: the game's own image)
@@ -956,7 +958,9 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
             }
             if (b->tp > 0 && layer == 0) texpatch_apply(b->tp - 1, lv, lin, l.w, l.h, row);
             // Diablo III's button-prompt atlas (known by its contents): PlayStation labels (runtime/nvn/texpatch.c)
-            if (layer == 0 && t->format == 0x44 && h == 0x450cd94995bd5c90ull && !getenv("D3_NINTENDO_PROMPTS")) {
+            extern int d3_prompts_nintendo(void);  // ("Button icons" = Nintendo: the game's own pictures, unpatched)
+            bool d3_own_prompts = getenv("D3_NINTENDO_PROMPTS") || d3_prompts_nintendo();
+            if (layer == 0 && t->format == 0x44 && h == 0x450cd94995bd5c90ull && !d3_own_prompts) {
                 if (lv == 0) {
                     uint64_t t0_ = SDL_GetTicksNS();
                     texpatch_d3_buttons(lin, l.w, l.h, row, h);  // (h: its content hash)
@@ -974,7 +978,7 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
                 }
             }
             // Diablo III's world interaction prompt (four circles, one lit): the PlayStation button (texpatch.c)
-            if (layer == 0 && t->format == 0x25 && h == 0x1fd735c20acb0535ull && !getenv("D3_NINTENDO_PROMPTS")) {
+            if (layer == 0 && t->format == 0x25 && h == 0x1fd735c20acb0535ull && !d3_own_prompts) {
                 extern int d3_prompts_xbox(void), g_d3_label_xbox;
                 g_d3_label_xbox = d3_prompts_xbox();  // (its symbol in the same style as the atlas)
                 texpatch_d3_world_prompt(lin, l.w, l.h, row);
