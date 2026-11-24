@@ -70,6 +70,7 @@ MOD_VARIANTS = {
     0x4fa01c: (0x34000520, [0x528000b9]),   # anygem: socket check: w25 = 5 (allowed) ...
     0x4fa024: (0x7100091f, [0x14000028]),   #   ... and return it
     0x4f99dc: (0x340000a8, [0xd503201f]),   # autopickup: the pickup check's early "no" -> on to the item's flag
+    0x4f99ec: (0x340000c0, [0x14000006]),   #   and the item's NO_AUTOPICKUP attribute (gear, gems) -> picked up too
 }
 _applied = set()  # (the PATCHES / REPLACES that apply_text put in, by index: check_applied)
 

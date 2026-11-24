@@ -85,8 +85,8 @@ All off by default; changes apply after a restart. Back up your saves before try
   `challengerift_00.dat` ...) into a folder named `challenge_rifts` inside the `data` folder. A new rift every week.
 
 ## Known issues
-- Mods: season buffs and events show as empty green boxes in the buff bar (the buffs work; their icons are missing
-  offline). Auto Pickup picks up gold and crafting materials, not gear and gems.
+- Mods: extra season buffs and events show as empty green frames in the buff bar. The buffs work; the game only has
+  icon art for each season's own theme buff.
 - **120 fps is experimental.** The game steps its world 60 times a second; at 120 fps moving characters can now and
   then show ghosting (a double image). The port detects it and corrects itself within about a second, but if it
   bothers you, use 60 fps (the default).

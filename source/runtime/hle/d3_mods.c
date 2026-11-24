@@ -102,7 +102,7 @@ static const struct { const char *label, *desc; } k_cheats[D3_CHEAT_COUNT] = {
     {"Drop Any Item", "Items that normally can't drop can (Staff of Herding parts and others)."},
     {"Guaranteed Legendaries", "Kadala and Kanai's Cube always give a legendary."},
     {"Socket Any Gem Anywhere", "Any gem goes into any socket."},
-    {"Auto Pickup", "Loot is picked up by walking near it."},
+    {"Auto Pickup", "Loot - gear and gems too - is picked up by walking near it."},
     {"God Mode", "Your hero can't be hurt or stopped (also infinite resource)."},
     {"Debug Flags", "The developers' flags: every hit critical and crushing, item details shown, and more."},
     {"Equip In Any Slot", "Any item goes into any equipment slot."},
@@ -128,7 +128,7 @@ static const struct { uint32_t off, word, cheat; } k_sites[] = {
     {0x504d78, 0x12800000, D3C_DROPANY},
     {0x88f92c, 0xd503201f, D3C_LEGCHANCE}, {0x88f934, 0xd503201f, D3C_LEGCHANCE}, {0x88f93c, 0x14000063, D3C_LEGCHANCE},
     {0x88fac4, 0xd503201f, D3C_LEGCHANCE}, {0x88fae0, 0x140000d4, D3C_LEGCHANCE},
-    {0x4fa01c, 0x528000b9, D3C_ANYGEM}, {0x4fa024, 0x14000028, D3C_ANYGEM}, {0x4f99dc, 0xd503201f, D3C_AUTOPICKUP},
+    {0x4fa01c, 0x528000b9, D3C_ANYGEM}, {0x4fa024, 0x14000028, D3C_ANYGEM}, {0x4f99dc, 0xd503201f, D3C_AUTOPICKUP}, {0x4f99ec, 0x14000006, D3C_AUTOPICKUP},
 };
 enum { NSITES = sizeof k_sites / sizeof *k_sites };
 

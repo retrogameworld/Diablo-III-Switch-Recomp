@@ -924,14 +924,18 @@ static void tab_mods(void) {
     if (opt_choice("Offline Season", &si, seasons, 28, 0,
                    "Play a season offline: new heroes can be made seasonal, with that season's journey and rewards. "
                    "Applies after a restart. Back up your saves first."))
+    {
+        // (picking a season from Off turns its theme buff on: the one buff the game has a picture for)
+        if (si && !g_settings.d3_season) g_settings.d3_buffs |= D3_BUFFS_THEME;
         g_settings.d3_season = si ? 13 + si : 0;
+    }
     bool theme = (g_settings.d3_buffs & D3_BUFFS_THEME) != 0;
-    if (opt_toggle("Season Theme Buff", &theme, false, "The chosen season's own theme (its buff), on top of the ones below."))
+    if (opt_toggle("Season Theme Buff", &theme, false, "The chosen season's own theme (its buff), with its picture in the buff bar."))
         g_settings.d3_buffs = theme ? g_settings.d3_buffs | D3_BUFFS_THEME : g_settings.d3_buffs & ~D3_BUFFS_THEME;
     opt_section("Season Buffs And Events");
     for (int i = 0; i < D3_BUFF_COUNT; i++) {
         bool on = (g_settings.d3_buffs >> i & 1) != 0;
-        if (opt_toggle(d3_buff_label(i), &on, false, "A season buff or event, for every hero. Applies after a restart."))
+        if (opt_toggle(d3_buff_label(i), &on, false, "A season buff or event, for every hero. Applies after a restart. Unless it is the season's own theme, the buff bar shows it as an empty green frame (the game has no picture)."))
             g_settings.d3_buffs = on ? g_settings.d3_buffs | 1u << i : g_settings.d3_buffs & ~(1u << i);
     }
     opt_section("Cheats");
