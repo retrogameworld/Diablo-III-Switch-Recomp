@@ -925,6 +925,24 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
     uint64_t layer_size = tegra_layer_size(&t->layout);
     bool linear = (t->flags & 0x10) != 0;
     uint32_t levels = t->layout.levels < b->levels ? t->layout.levels : b->levels;
+    {   // D3_DUMP_BH=<folder> (debug): block-linear textures read from the game's memory whose height in GOBs is not a
+        // power of two below 16 (where the default block height rules differ) - raw bytes, to check the layout offline
+        static const char *bhd = (const char *)1;
+        if (bhd == (const char *)1) bhd = getenv("D3_DUMP_BH");
+        uint32_t hb0 = (t->layout.height + t->layout.fmt->bh - 1) / t->layout.fmt->bh, g0 = (hb0 + 7) / 8;
+        if (bhd && !linear && t->layout.depth <= 1 && g0 > 2 && g0 < 16 && (g0 & (g0 - 1))) {
+            static int nd;
+            if (nd++ < 300) {
+                char path[1200];
+                snprintf(path, sizeof path, "%s/%016llx_%ux%u_f%02x_bpb%u_bw%u_lv%u_bh%u.raw", bhd, (unsigned long long)h,
+                         t->layout.width, t->layout.height, t->format, t->layout.fmt->bpb, t->layout.fmt->bw, levels,
+                         t->layout.block_height_log2);
+                FILE *f = fopen(path, "wb");
+                if (f) { fwrite((const void *)(uintptr_t)t->addr, 1, layer_size, f); fclose(f); }
+                LOG("[bh] %s\n", path);
+            }
+        }
+    }
     for (uint32_t layer = 0; layer < layers; layer++) {
         for (uint32_t lv = 0; lv < levels; lv++) {
             LevelLayout l = tegra_level(&t->layout, lv);

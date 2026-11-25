@@ -7,13 +7,15 @@
 static uint32_t div_up(uint32_t a, uint32_t b) { return (a + b - 1) / b; }
 static uint64_t align_up(uint64_t a, uint64_t b) { return (a + b - 1) / b * b; }
 
-// The largest power of two of GOBs not above the height in GOBs (rounded up), at most 16. Measured on Diablo III's dye
-// colour table (256x84 RGBA8, filled by the game in the hardware's layout): 8 GOBs, not the 16 of rounding up to the
-// next power of two - with 16 every dyed item read the wrong colours (GitHub #2). Power-of-two heights are unchanged.
+// The power of two of GOBs nearest the height in GOBs (rounded up; halfway goes up), at most 16. Measured on three of
+// Diablo III's tables that the game fills in the hardware's layout (D3_DUMP_BH, work\dodge\bhview.py): the dye colour
+// table 256x84 RGBA8 (11 GOBs) is 8 GOBs high, and 256x92 and 93x93 RGBA8 (12 GOBs) are 16. Rounding up (16 for all)
+// gave dyed items the wrong colours (GitHub #2); rounding down (v1.2.0-v1.2.1: 8 for all) scrambled the other two
+// (likely the black rectangles players saw in the desert and swamp). Power-of-two heights are the same under every rule.
 uint32_t tegra_default_block_height_log2(uint32_t height_in_blocks) {
     uint32_t gobs = div_up(height_in_blocks, 8);
     uint32_t log2 = 0;
-    while ((2u << log2) <= gobs && log2 < 4) log2++;
+    while ((3u << log2) <= 2 * gobs && log2 < 4) log2++;
     return log2;
 }
 

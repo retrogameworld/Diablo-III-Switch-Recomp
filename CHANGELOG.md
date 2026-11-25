@@ -2,6 +2,10 @@
 
 What changed in each release of Diablo III Recomp (Windows). The newest is at the top.
 
+## v1.2.2 (2026-11-26)
+- Fixed rare black rectangles in some areas (seen in the desert and swamp maps). The v1.2.0 dye fix read two other
+  colour tables of the game wrong; all three are read right now.
+
 ## v1.2.1 (2026-11-25)
 - Fixed a crash when the game's scripts hit an error (seen at the start of Act 4).
 
