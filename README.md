@@ -11,30 +11,7 @@ machine.
 ## What's new in v1.2.1 (2026-11-25)
 - Fixed a crash when the game's scripts hit an error (seen at the start of Act 4).
 
-## What's new in v1.2.0 (2026-11-25)
-- Starts on more graphics drivers: it no longer asks for Vulkan features the driver doesn't have (Proton on ARM /
-  Adreno failed at launch). (#10)
-- A crash no longer says "your game files are incomplete" (that check counted another game's files).
-
-## What's new in v1.1.0 (2026-11-24)
-- **Mods** in PC Settings > Mods: offline seasons 14-40 with the Season Journey and seasonal heroes, season buffs and
-  events, every cheat from d3hack moved to this game version (god mode, no cooldowns, instant crafting, movement and
-  attack speed, always ancient / primal, auto pickup and more) and Challenge Rift offline. All off by default. Thanks
-  to d3hack and Diablo III Mobile, see below. (#4)
-- **Open source under the GPL version 2** (it was "view only" before).
-- **Voice packs:** your own voice pack NSPs in the `data` folder are unpacked once and the game can use that language.
-- **Fixes:**
-  - Nintendo button prompts now show the white A / B icons. (#6)
-  - Controller layout set to Xbox now shows Xbox prompts with any controller.
-  - The name keyboard can type Cyrillic, Greek and accented letters. (#5)
-  - The Challenges entry (achievements) is back on the More page offline. (#3)
-  - RB / LB switch tabs in menus again, at vendors and artisans too. (#2)
-  - Dyes show their real colours (they read the wrong colours, with black blocks). (#2)
-  - Xbox and other controllers without a touchpad: View opens the game menu (Options, Change Difficulty); PC
-    Settings open with View + Menu together. (#2)
-  - Ultrawide (21:9, 32:9) screens: the game stays 16:9 with black bars instead of stretching. (#8)
-- **After updating, the first start builds the game code again, once** (a progress window, like the first setup).
-  Your saves and settings stay.
+Earlier releases: see [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 - **Your own copy of the game, as NSP files:** the Diablo III: Eternal Collection **base game** and the **2.7.7 update**
