@@ -64,7 +64,11 @@ void rt_crash_explain(char *out, size_t n, const char *log_path) {
     static const char *const report = "Please report it as a GitHub issue and attach the log file below. "
                                       "Your progress up to your last save or autosave is safe.";
     char head[160], what[400];
-    if (rt_romfs_files >= 0 && rt_romfs_files < ROMFS_FILES) {
+    // (Link's Awakening's file count: Diablo III's game files are 37 big archives, so a crash there read as "files
+    // incomplete" - a player's report, a crash at the start of Act 4)
+    extern bool game_is_d3(void);
+    bool las = !game_is_d3();
+    if (las && rt_romfs_files >= 0 && rt_romfs_files < ROMFS_FILES) {
         snprintf(head, sizeof head, "Your game files are incomplete");
         snprintf(what, sizeof what, "LAS Recomp found %d of the game's %d files, and the game stopped when it needed "
                  "one that's missing. Copy your game files again so none are missing, then set them up again on the "
@@ -86,7 +90,7 @@ void rt_crash_explain(char *out, size_t n, const char *log_path) {
         snprintf(head, sizeof head, "No font for the game's text");
         snprintf(what, sizeof what, "Import the Switch fonts in Settings (Game font), or reinstall LAS Recomp - it "
                  "comes with a font of its own.");
-    } else if (rt_romfs_files >= ROMFS_FILES &&
+    } else if (las && rt_romfs_files >= ROMFS_FILES &&
                (rt_romfs_missing > 0 ||
                 (game_romfs_bytes(game_version()) && rt_romfs_bytes != game_romfs_bytes(game_version())))) {
         snprintf(head, sizeof head, "Your game files are damaged or changed");

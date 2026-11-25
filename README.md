@@ -8,7 +8,12 @@ services, the NVN graphics API, audio output, controllers, saves - are reimpleme
 **No game files are or will be included.** The game is built from the player's own legally dumped copy on their own
 machine.
 
-## What's new (2026-11-24)
+## What's new in v1.2.0 (2026-11-25)
+- Starts on more graphics drivers: it no longer asks for Vulkan features the driver doesn't have (Proton on ARM /
+  Adreno failed at launch). (#10)
+- A crash no longer says "your game files are incomplete" (that check counted another game's files).
+
+## What's new in v1.1.0 (2026-11-24)
 - **Mods** in PC Settings > Mods: offline seasons 14-40 with the Season Journey and seasonal heroes, season buffs and
   events, every cheat from d3hack moved to this game version (god mode, no cooldowns, instant crafting, movement and
   attack speed, always ancient / primal, auto pickup and more) and Challenge Rift offline. All off by default. Thanks

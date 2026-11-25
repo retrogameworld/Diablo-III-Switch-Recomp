@@ -520,6 +520,43 @@ static void create_device(void) {
     g_vk.ssbo_chunks = h->fragmentStoresAndAtomics && h->vertexPipelineStoresAndAtomics && h->robustBufferAccess;
     b->shaderClipDistance = h->shaderClipDistance;
     if (!h->shaderInt64) LOG("[vk] warning: no shaderInt64 (64-bit address math in shaders)\n");
+    {   // Only what the driver has: a request for a missing feature fails vkCreateDevice with FEATURE_NOT_PRESENT
+        // (Mesa turnip on an Adreno 830 under Proton, a player's log). The missing ones are logged; drawing goes on
+        // without them where it can.
+        VkPhysicalDeviceCustomBorderColorFeaturesEXT q_cbc = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_FEATURES_EXT};
+        VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT q_div = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES_EXT};
+        VkPhysicalDeviceVulkan13Features q13 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+        VkPhysicalDeviceVulkan12Features q12 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, .pNext = &q13};
+        VkPhysicalDeviceVulkan11Features q11 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES, .pNext = &q12};
+        if (g_vk.custom_border) q_cbc.pNext = q11.pNext, q11.pNext = &q_cbc;
+        if (g_vk.divisor) q_div.pNext = q11.pNext, q11.pNext = &q_div;
+        VkPhysicalDeviceFeatures2 q = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &q11};
+        vkGetPhysicalDeviceFeatures2(g_vk.phys, &q);
+        char miss[400] = "";
+#define D3_FEAT(want, have_, name) do { if ((want) && !(have_)) { (want) = VK_FALSE; \
+        strncat(miss, " " name, sizeof miss - strlen(miss) - 1); } } while (0)
+        D3_FEAT(f11.storageBuffer16BitAccess, q11.storageBuffer16BitAccess, "storageBuffer16BitAccess");
+        D3_FEAT(f12.timelineSemaphore, q12.timelineSemaphore, "timelineSemaphore");
+        D3_FEAT(f12.shaderInt8, q12.shaderInt8, "shaderInt8");
+        D3_FEAT(f12.samplerMirrorClampToEdge, q12.samplerMirrorClampToEdge, "samplerMirrorClampToEdge");
+        D3_FEAT(f12.uniformAndStorageBuffer8BitAccess, q12.uniformAndStorageBuffer8BitAccess, "uniformAndStorageBuffer8BitAccess");
+        D3_FEAT(f12.storageBuffer8BitAccess, q12.storageBuffer8BitAccess, "storageBuffer8BitAccess");
+        D3_FEAT(f12.scalarBlockLayout, q12.scalarBlockLayout, "scalarBlockLayout");
+        D3_FEAT(f12.bufferDeviceAddress, q12.bufferDeviceAddress, "bufferDeviceAddress");
+        D3_FEAT(f13.dynamicRendering, q13.dynamicRendering, "dynamicRendering");
+        D3_FEAT(f13.synchronization2, q13.synchronization2, "synchronization2");
+        D3_FEAT(f13.shaderDemoteToHelperInvocation, q13.shaderDemoteToHelperInvocation, "shaderDemoteToHelperInvocation");
+        D3_FEAT(f13.shaderTerminateInvocation, q13.shaderTerminateInvocation, "shaderTerminateInvocation");
+        D3_FEAT(f13.maintenance4, q13.maintenance4, "maintenance4");
+        if (g_vk.custom_border) {
+            D3_FEAT(cbc.customBorderColors, q_cbc.customBorderColors, "customBorderColors");
+            D3_FEAT(cbc.customBorderColorWithoutFormat, q_cbc.customBorderColorWithoutFormat, "customBorderColorWithoutFormat");
+        }
+        if (g_vk.divisor) D3_FEAT(div.vertexAttributeInstanceRateDivisor, q_div.vertexAttributeInstanceRateDivisor, "vertexAttributeInstanceRateDivisor");
+#undef D3_FEAT
+        if (!f12.bufferDeviceAddress) g_vk.bda = false;
+        if (miss[0]) LOG("[vk] the driver lacks these features (left off):%s\n", miss);
+    }
     float prio = 1.0f;
     VkDeviceQueueCreateInfo qi = {.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, .queueFamilyIndex = g_vk.qfam,
                                   .queueCount = 1, .pQueuePriorities = &prio};

@@ -204,6 +204,9 @@ static void log_startup_info(void) {
     else if (si.ram) snprintf(ram, sizeof ram, "%llu GB RAM", tenths / 10);
     fprintf(stderr, "[info] LAS Recomp %s, %s, %s%s, %s%s%s\n", larecomp_version(), si.os[0] ? si.os : "unknown OS",
             si.cpu[0] ? si.cpu : "unknown CPU", cores, ram, si.package ? ", " : "", si.package ? si.package : "");
+#ifdef D3_VERSION
+    fprintf(stderr, "[info] Diablo III Recomp v%s\n", D3_VERSION);  // (src/d3recomp/D3_VERSION: the release)
+#endif
 }
 
 int main(int argc, char **argv) {
