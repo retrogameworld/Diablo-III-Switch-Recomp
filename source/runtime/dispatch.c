@@ -138,6 +138,35 @@ GuestFn dispatch_lookup(uint64_t addr) {
 #define DCACHE 4096
 static __thread struct { uint64_t addr; GuestFn fn; } dcache[DCACHE];
 
+// Diablo III's Lua (luaD_rawrunprotected, main+0xb20ef8) catches script errors with setjmp / longjmp. The guest longjmp
+// restores the registers and returns to the setjmp's return address, in the middle of a recompiled function: there is
+// no function there ("no function at 7000b20efc", a player's crash at the start of Act 4). The generated call site
+// (tools/d3_gen_patch.py) keeps a __builtin_setjmp buffer here, by the guest sp of the call; a return to that address
+// with that sp jumps back into the recompiled function right after the call, with the registers the guest restored.
+#define SJ_SLOTS 64
+typedef struct { uint64_t sp, ret; void *buf[5]; } SjSlot;
+static __thread SjSlot sj_slots[SJ_SLOTS];
+static __thread int sj_n;
+void **d3_sj_slot(Cpu *c, uint64_t ret) {
+    int i;
+    for (i = 0; i < sj_n; i++)
+        if (sj_slots[i].sp == c->sp && sj_slots[i].ret == ret) break;
+    if (i == sj_n) {
+        if (sj_n < SJ_SLOTS) sj_n++;
+        else i = SJ_SLOTS - 1;  // (deeper than ever seen: the newest takes the last slot)
+    }
+    sj_slots[i].sp = c->sp, sj_slots[i].ret = ret;
+    return sj_slots[i].buf;
+}
+static void sj_return(Cpu *c, uint64_t pc) {
+    for (int i = sj_n - 1; i >= 0; i--)
+        if (sj_slots[i].ret == pc && sj_slots[i].sp == c->sp) {
+            static int n;
+            if (n++ < 20) LOG("[d3] the game's Lua caught an error (longjmp back to %llx)\n", (unsigned long long)pc);
+            __builtin_longjmp(sj_slots[i].buf, 1);
+        }
+}
+
 __attribute__((noinline)) static GuestFn dispatch_slow(Cpu *c) {
     uint64_t pc = c->pc;
     if (pc >= HLE_BASE && pc < HLE_BASE + HLE_SIZE) {
@@ -152,6 +181,7 @@ __attribute__((noinline)) static GuestFn dispatch_slow(Cpu *c) {
     for (int i = 0; i < override_count; i++)
         if (overrides[i].addr == pc) return overrides[i].fn;
     GuestFn f = dispatch_lookup(pc);
+    if (!f) sj_return(c, pc);  // (a longjmp back to a setjmp's call site: does not come back)
     if (!f) {
         uint64_t off;
         const char *s = loader_symbol_at(c->x[30], &off);

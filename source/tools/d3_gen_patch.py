@@ -143,6 +143,13 @@ PATCHES = [
 # 2. the "Disconnected from Diablo Network / Not Signed In" box: main menu (main+0x362884) and pause menu
 #    (main+0x2212b4) show it with SetVisible(1); d3_online_status_shown() decides instead (0 unless D3_MENU_ALL)
 REPLACES = [
+    # 22. Lua's error catch (luaD_rawrunprotected, main+0xb20ef8 bl setjmp): a host __builtin_setjmp around the call, so the
+    #     game's longjmp back to it lands here (runtime/dispatch.c d3_sj_slot / sj_return; a crash at the start of Act 4)
+    ('main_339.c',
+     '    c->x[30] = 0x7000b20efcull; f_7000c722f0(c);\n',
+     '    { void **sjb_ = d3_sj_slot(c, 0x7000b20efcull); if (__builtin_setjmp(sjb_) == 0) { c->x[30] = 0x7000b20efcull; '
+     'f_7000c722f0(c); } }  /* d3_gen_patch.py: Lua setjmp */\n',
+     'void **d3_sj_slot(Cpu *c, uint64_t ret);  /* d3_gen_patch.py */\n'),
     # 21. mods: hero create's season confirmation (main+0x351ccc b.ne -> mov w1,#1) and SetGameParamsForHero's season of
     #     a hero without data (main+0x1bd140 ldr w21 -> our season) - hle/d3_mods.c
     ('main_117.c',
