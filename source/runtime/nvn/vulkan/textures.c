@@ -1469,6 +1469,13 @@ VkSampler vk_sampler(NvnSamplerDesc *d) {
     }
     uint32_t mf = d->min_filter;
     si.minFilter = (mf == 1 || mf == 3 || mf == 5) ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+    {   // ... and below 1080p (Internal resolution 720p: the game image at 0.8) the same pages are shrunk: point-sampled,
+        // whole rows and columns of each letter were skipped - broken, unreadable text (a player's report, Vega 11 at
+        // 720p). Minification is linear there too (the mip mode stays the game's). D3_MAG_NEAREST=1: as the game asks.
+        static int ml = -1;
+        if (ml < 0) ml = game_is_d3() && !getenv("D3_MAG_NEAREST");
+        if (ml) si.minFilter = VK_FILTER_LINEAR;
+    }
     si.mipmapMode = mf == 4 || mf == 5 ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST;
     VkSamplerAddressMode modes[3];
     bool border = false;
