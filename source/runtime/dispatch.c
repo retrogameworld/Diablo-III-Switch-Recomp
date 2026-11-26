@@ -143,17 +143,39 @@ static __thread struct { uint64_t addr; GuestFn fn; } dcache[DCACHE];
 // no function there ("no function at 7000b20efc", a player's crash at the start of Act 4). The generated call site
 // (tools/d3_gen_patch.py) keeps a __builtin_setjmp buffer here, by the guest sp of the call; a return to that address
 // with that sp jumps back into the recompiled function right after the call, with the registers the guest restored.
-#define SJ_SLOTS 64
+// The slots are a stack of the catch points still open on this thread, outermost (highest sp) first. A new call at
+// sp S means every slot at S or deeper belongs to a call that has already returned: those are dropped first. (v1.2.1
+// kept every sp ever seen and never dropped one: after 64 different depths the newest call took over the last slot, so
+// an outer catch point could be lost and its error crashed with "no function at 7000b20efc" again.)
+// D3_LOG_SJ=1 logs the open depth and each longjmp.
+#define SJ_SLOTS 256
 typedef struct { uint64_t sp, ret; void *buf[5]; } SjSlot;
 static __thread SjSlot sj_slots[SJ_SLOTS];
-static __thread int sj_n;
+static __thread int sj_n, sj_max;
+static int sj_log = -1;
 void **d3_sj_slot(Cpu *c, uint64_t ret) {
-    int i;
-    for (i = 0; i < sj_n; i++)
-        if (sj_slots[i].sp == c->sp && sj_slots[i].ret == ret) break;
-    if (i == sj_n) {
-        if (sj_n < SJ_SLOTS) sj_n++;
-        else i = SJ_SLOTS - 1;  // (deeper than ever seen: the newest takes the last slot)
+    while (sj_n > 0 && sj_slots[sj_n - 1].sp <= c->sp) sj_n--;  // (returned calls: at this depth or deeper)
+    int i = sj_n;
+    if (sj_n < SJ_SLOTS) sj_n++;
+    else {
+        static int warned;
+        if (!warned++) LOG("[d3] Lua error catch: more than %d open at once (the newest replaces the deepest)\n", SJ_SLOTS);
+        i = SJ_SLOTS - 1;
+    }
+    if (sj_n > sj_max) {
+        sj_max = sj_n;
+        if (sj_log < 0) sj_log = getenv("D3_LOG_SJ") != NULL;
+        if (sj_log) LOG("[d3] Lua error catch: %d open at once (new deepest)\n", sj_max);
+    }
+    if (sj_log > 0) {  // (how many different depths this thread has used: v1.2.1 kept one slot for each, 64 at most)
+        static __thread uint64_t seen[512];
+        static __thread int nseen;
+        int k = 0;
+        while (k < nseen && seen[k] != c->sp) k++;
+        if (k == nseen && nseen < 512) {
+            seen[nseen++] = c->sp;
+            LOG("[d3] Lua error catch: %d different depths so far (thread %p)\n", nseen, (void *)&sj_n);
+        }
     }
     sj_slots[i].sp = c->sp, sj_slots[i].ret = ret;
     return sj_slots[i].buf;
@@ -162,9 +184,19 @@ static void sj_return(Cpu *c, uint64_t pc) {
     for (int i = sj_n - 1; i >= 0; i--)
         if (sj_slots[i].ret == pc && sj_slots[i].sp == c->sp) {
             static int n;
-            if (n++ < 20) LOG("[d3] the game's Lua caught an error (longjmp back to %llx)\n", (unsigned long long)pc);
+            if (n++ < 20) LOG("[d3] the game's Lua caught an error (longjmp back to %llx, %d of %d open)\n",
+                              (unsigned long long)pc, i + 1, sj_n);
+            sj_n = i + 1;  // (the deeper ones are unwound by this longjmp)
             __builtin_longjmp(sj_slots[i].buf, 1);
         }
+    if (pc == 0x7000b20efcull) {  // (a Lua longjmp with no open catch point: say so before the FATAL below)
+        char b[512];
+        int o = 0;
+        for (int i = 0; i < sj_n && i < 16 && o < 400; i++)
+            o += snprintf(b + o, sizeof b - o, " %llx", (unsigned long long)sj_slots[i].sp);
+        b[o] = 0;
+        LOG("[d3] Lua error catch: no open catch point for sp %llx (%d open:%s)\n", (unsigned long long)c->sp, sj_n, b);
+    }
 }
 
 __attribute__((noinline)) static GuestFn dispatch_slow(Cpu *c) {

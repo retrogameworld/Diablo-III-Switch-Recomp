@@ -8,8 +8,10 @@ services, the NVN graphics API, audio output, controllers, saves - are reimpleme
 **No game files are or will be included.** The game is built from the player's own legally dumped copy on their own
 machine.
 
-## What's new in v1.2.3 (2026-11-26)
-- Text is readable again at Internal resolution 720p (letters looked broken).
+## What's new in v1.2.4 (2026-11-26)
+- Fixed a crash later in the game when the game's scripts hit an error (seen in Act 5). The v1.2.1 fix could stop
+  working after a few minutes of play.
+- (v1.2.3) Text is readable again at Internal resolution 720p (letters looked broken).
 - (v1.2.2) Fixed rare black rectangles in some areas (seen in the desert and swamp maps).
 - (v1.2.1) Fixed a crash when the game's scripts hit an error (seen at the start of Act 4).
 

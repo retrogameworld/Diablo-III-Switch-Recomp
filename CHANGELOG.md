@@ -2,6 +2,10 @@
 
 What changed in each release of Diablo III Recomp (Windows). The newest is at the top.
 
+## v1.2.4 (2026-11-26)
+- Fixed a crash later in the game when the game's scripts hit an error (seen in Act 5). The v1.2.1 fix kept a spot for
+  every place the scripts were called from and ran out of spots after a few minutes of play.
+
 ## v1.2.3 (2026-11-26)
 - Text is readable again at Internal resolution 720p (letters were missing pixels and looked broken).
 
