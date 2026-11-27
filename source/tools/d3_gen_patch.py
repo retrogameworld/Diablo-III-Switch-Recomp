@@ -22,6 +22,8 @@ MOD_ENTRIES = [
     0x1b0600,  # the mailbox's lobby check (offline season)
     0x1bf5f0,  # ValidateHeroForPartyMember (offline season)
     0x5282b0,  # PlayerCanPlayHandicap (all difficulties)
+    0x4f9820,  # "is this item picked up by walking over it" (auto pickup: every item, GitHub #15)
+    0x181060,  # the Game Settings difficulty lock (Torment VII+ "locked until level 70"; all difficulties, GitHub #15)
     0x8875d0,  # Kanai's Cube material use (free cube)
     0x0c8000,  # CPlayerGetMoveSpeedForStickInput (movement speed)
     0x6cc700,  # PowerGetFormulaValueAtLevel (attack speed)
@@ -143,6 +145,13 @@ PATCHES = [
 # 2. the "Disconnected from Diablo Network / Not Signed In" box: main menu (main+0x362884) and pause menu
 #    (main+0x2212b4) show it with SetVisible(1); d3_online_status_shown() decides instead (0 unless D3_MENU_ALL)
 REPLACES = [
+    # 23. a string the game's text tables lack (main+0x6f1518: snprintf "%s - %d:%s" with "!!Missing!!", the id and its
+    #     key): a readable name made from the key instead (hle/d3_mods.c d3_missing_text; the offline Anniversary buffs
+    #     showed "!!Missing!! - 77545:Anniversary_Buff_EXPMF_11" under Temporary Effects, GitHub #15)
+    ('main_211.c',
+     '    c->x[30] = 0x70006f1530ull; f_70000084c0(c);\n',
+     '    c->x[30] = 0x70006f1530ull; if (!d3_missing_text(c)) f_70000084c0(c);  /* d3_gen_patch.py */\n',
+     'int d3_missing_text(Cpu *c);  /* d3_gen_patch.py */\n'),
     # 22. Lua's error catch (luaD_rawrunprotected, main+0xb20ef8 bl setjmp): a host __builtin_setjmp around the call, so the
     #     game's longjmp back to it lands here (runtime/dispatch.c d3_sj_slot / sj_return; a crash at the start of Act 4)
     ('main_339.c',

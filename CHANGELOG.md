@@ -2,6 +2,12 @@
 
 What changed in each release of Diablo III Recomp (Windows). The newest is at the top.
 
+## v1.2.5 (2026-11-27)
+- Mods: All Difficulties now also opens Torment VII-XVI in Game Settings (they stayed "locked until level 70"). (#15)
+- Mods: Auto Pickup now picks up gear and gems too, not only gold and materials. (#15)
+- Season buffs: the Anniversary buffs show a name under Status Effects instead of "!!Missing!!". (#15)
+- **After updating, the first start builds the game code again, once.**
+
 ## v1.2.4 (2026-11-26)
 - Fixed a crash later in the game when the game's scripts hit an error (seen in Act 5). The v1.2.1 fix kept a spot for
   every place the scripts were called from and ran out of spots after a few minutes of play.

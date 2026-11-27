@@ -300,12 +300,51 @@ int d3_mods_fn(Cpu *c, uint64_t addr) {
         if (!cheat(D3C_DIFFICULTY)) return 0;
         c->x[0] = 1;
         return 1;
+    case 0x70004f9820ull:  // "is this ground item picked up by walking over it" (item ACD) -> 1. The instruction variants
+        // at 0x4f99dc / 0x4f99ec only reached the end of it: gear and gems left earlier, at their item type's own "auto
+        // pickup" flag (main+0x4f9944), so nothing but gold and materials was picked up (GitHub #15)
+        if (!cheat(D3C_AUTOPICKUP)) return 0;
+        if (getenv("D3_MODS_LOG")) { static int n; if (n++ < 20) LOG("[d3mods] auto pickup: item %#x\n", LD32(c->x[0] + 0x3c)); }
+        c->x[0] = 1;
+        return 1;
+    case 0x7000181060ull:  // Game Settings' "is this difficulty locked" (difficulty, player) -> 0: the menu let Torment
+        if (!cheat(D3C_DIFFICULTY)) return 0;  // VII-XVI stay "locked until your hero is level 70" (GitHub #15)
+        c->x[0] = 0;
+        return 1;
     case 0x70008875d0ull:  // Kanai's Cube material consumption -> nothing taken
         if (!cheat(D3C_CUBE)) return 0;
         return 1;
     }
     return 0;
 }
+// A text the game's string tables don't have (main+0x6f1518, tools/d3_gen_patch.py #23): the game prints
+// "!!Missing!! - <id>:<key>". The offline Anniversary event's buffs have no names in this version (GitHub #15:
+// "!!Missing!! - 77545:Anniversary_Buff_EXPMF_11" under Temporary Effects): a name made from the key instead -
+// underscores to spaces, a trailing number dropped. Args as the snprintf call: x0 buffer, x1 size, x4 id, x5 key.
+int d3_missing_text(Cpu *c) {
+    char *buf = (char *)(uintptr_t)c->x[0];
+    size_t size = (size_t)c->x[1];
+    const char *key = (const char *)(uintptr_t)c->x[5];
+    if (!buf || size < 2 || !key || c->x[5] < 0x10000 || getenv("D3_MISSING_TEXT")) return 0;
+    static const struct { const char *prefix, *name; } k_names[] = {
+        {"Anniversary_Buff_EXPMF", "Anniversary: Experience and Magic Find"},
+        {"Anniversary_Buff", "Anniversary Buff"},
+    };
+    for (unsigned i = 0; i < sizeof k_names / sizeof *k_names; i++)
+        if (!strncmp(key, k_names[i].prefix, strlen(k_names[i].prefix))) {
+            c->x[0] = (uint64_t)snprintf(buf, size, "%s", k_names[i].name);
+            return 1;
+        }
+    size_t n = 0;
+    for (const char *p = key; *p && n + 1 < size; p++) buf[n++] = *p == '_' ? ' ' : *p;
+    while (n && buf[n - 1] >= '0' && buf[n - 1] <= '9') n--;  // (a trailing level number: "..._11")
+    while (n && buf[n - 1] == ' ') n--;
+    if (!n) return 0;
+    buf[n] = 0;
+    c->x[0] = n;
+    return 1;
+}
+
 // the hero-create season confirmation callback (main+0x351ccc b.ne -> mov w1,#1): 1 = take it as "seasonal: yes"
 int d3_mods_season_confirm(Cpu *c) {
     init();
