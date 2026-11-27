@@ -76,6 +76,9 @@ typedef struct {
 void plat_system_info(PlatSysInfo *si);
 bool plat_exe_path(char *buf, size_t size);
 void plat_exec(char *const argv[]);  // replace the process (NULL = same command line); returns only on failure
+// start a new copy of this program with the same command line, on its own (the caller then exits): the settings
+// menu's "Restart Now" (runtime/ui/menu.mm, runtime/main.c rt_restart_on_quit). false: it could not be started
+bool plat_spawn_self(void);
 #if defined(_WIN32) || defined(__linux__)
 void plat_terminate(void);  // end the process now, skipping DLL teardown (exit status 0)
 #endif

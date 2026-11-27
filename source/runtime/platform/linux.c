@@ -410,6 +410,17 @@ void plat_exec(char *const argv[]) {
     if (av && plat_exe_path(path, sizeof path)) execv(path, av);
 }
 
+bool plat_spawn_self(void) {
+    pid_t pid = fork();
+    if (pid < 0) return false;
+    if (pid == 0) {  // (the child: a new session, then this program again)
+        setsid();
+        plat_exec(NULL);
+        _exit(127);
+    }
+    return true;
+}
+
 // ---- diagnostics
 // Exported symbols only (the Makefile links with -rdynamic); frames in the generated code are left to the caller,
 // which maps them to guest functions (runtime/dispatch.c). Static runtime functions come out as the nearest guest

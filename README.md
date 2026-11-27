@@ -8,9 +8,13 @@ services, the NVN graphics API, audio output, controllers, saves - are reimpleme
 **No game files are or will be included.** The game is built from the player's own legally dumped copy on their own
 machine.
 
-## What's new in v1.2.5 (2026-11-27)
-- Mods: All Difficulties opens Torment VII-XVI, Auto Pickup takes gear and gems, Anniversary buffs have names. (#15)
+## What's new in v1.2.6 (2026-11-27)
+- Challenges are in the pause menu too: check your progress without leaving the game. (#16)
+- Mods: new cheat No Rift Close Timer: a rift closes as soon as you turn it in at Orek, no 30-second wait. (#15)
+- Mods: new cheat Unlock All Cosmetics: every wing, pet, pennant and portrait frame. (#15)
+- Settings that need a restart now offer Restart Now when you close the settings menu, and Quit has Restart Game.
 - The first start after updating builds the game code again, once.
+- (v1.2.5) Mods: All Difficulties opens Torment VII-XVI, Auto Pickup takes gear and gems, Anniversary buffs have names. (#15)
 - (v1.2.4) Fixed a crash later in the game when the game's scripts hit an error (seen in Act 5). The v1.2.1 fix could
   stop working after a few minutes of play.
 - (v1.2.3) Text is readable again at Internal resolution 720p (letters looked broken).
@@ -67,7 +71,8 @@ All off by default; changes apply after a restart. Back up your saves before try
   craft, enchant, cube), gem upgrades always work / faster / straight to level 150, infinite resource, extra greater
   rift orbs, the same legendary twice, easy kill damage, red damage numbers, drop any item, guaranteed legendaries
   from Kadala and the cube, any gem in any socket, auto pickup, god mode, the developers' debug flags, any item in any
-  slot.
+  slot, no rift close timer (a rift closes as soon as you turn it in at Orek), unlock all cosmetics (every wing,
+  pet, pennant and portrait frame; they stay on your account).
 - **Movement and attack speed:** 100% to 300%.
 - **Legendary drops:** always ancient, always primal, no primal or no ancient.
 - **Challenge Rift offline:** the weekly Challenge Rift without servers (Game Settings > Mode > Challenge Rifts; the

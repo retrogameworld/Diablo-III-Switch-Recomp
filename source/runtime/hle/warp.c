@@ -167,6 +167,48 @@ static void mem_dump_test(uint64_t frame) {
     LOG("[memdump] frame %llu addr %llx bytes %zu\n", (unsigned long long)frame, (unsigned long long)p, n);
 }
 
+// D3_FIND_TEXT=<frame>:<text> (bring-up): at that frame, the game heap's copies of <text> (up to 16) -> the log, and
+// 64 KB around each -> build/find_<n>.bin (game scripts and data the game unpacked into memory)
+extern int kernel_data_regions(uint64_t *addr, uint64_t *size, int max);  // runtime/kernel.c
+static void find_text_test(uint64_t frame) {
+    static int done;
+    const char *e = getenv("D3_FIND_TEXT");
+    if (done || !e) return;
+    long at = strtol(e, (char **)&e, 0);
+    if ((long)frame < at || *e != ':') return;
+    done = 1;
+    const char *t = e + 1;
+    size_t tn = strlen(t), total = 0;
+    static uint64_t ra[65536], rs[65536];  // (the game's writable memory, contiguous runs merged)
+    int nr = kernel_data_regions(ra, rs, 65536), m = 0, n = 0;
+    for (int k = 0; k < nr; k++) {
+        if (m && ra[m - 1] + rs[m - 1] == ra[k]) rs[m - 1] += rs[k];
+        else ra[m] = ra[k], rs[m] = rs[k], m++;
+    }
+    for (int r = 0; r < m && n < 16; r++) {
+        const uint8_t *h = (const uint8_t *)(uintptr_t)ra[r];
+        size_t size = (size_t)rs[r];
+        total += size;
+        for (size_t i = 0; tn && size >= tn && i + tn <= size && n < 16; i++) {
+            const uint8_t *p = memchr(h + i, (uint8_t)t[0], size - tn - i + 1);
+            if (!p) break;
+            i = (size_t)(p - h);
+            if (memcmp(p, t, tn)) continue;
+            size_t lo = i > 0x8000 ? i - 0x8000 : 0, hi = i + 0x8000 < size ? i + 0x8000 : size;
+            char path[64];
+            snprintf(path, sizeof path, "build/find_%d.bin", n);
+            FILE *f = fopen(path, "wb");
+            if (f) fwrite(h + lo, 1, hi - lo, f), fclose(f);
+            LOG("[find] '%s' at %llx (file %s starts at %llx)\n", t, (unsigned long long)(ra[r] + i), path,
+                (unsigned long long)(ra[r] + lo));
+            n++;
+            i += tn - 1;
+        }
+    }
+    LOG("[find] '%s': %d found in %zu MB of game memory (%d runs) at frame %llu\n", t, n, total >> 20, m,
+        (unsigned long long)frame);
+}
+
 // LARECOMP_TEST_CRASH=<frame>:<segv|terminate|fatal> (test): stop the way those crashes do, for the crash dialog's
 // explanations (runtime/crash_explain.c) - segv: a game-memory read at 0; terminate: the uncaught-exception line
 static void crash_test(uint64_t frame) {
@@ -211,6 +253,7 @@ void warp_frame(uint64_t frame) {
     warp_test(frame);
     warp_on_load(frame);
     mem_dump_test(frame);
+    find_text_test(frame);
     if (ENV("LARECOMP_LOG_WARPAVAIL") && frame % 300 == 0) {
         uint64_t gm = LD64(GA(GAME_MGR)), ps = LD64(GA(PLAYER_STATUS_PTR));
         LOG("[warp] frame %llu gm %llx +4b8 %llx +4a8 %llx level '%s'\n", (unsigned long long)frame, (unsigned long long)gm,

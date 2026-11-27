@@ -1521,7 +1521,8 @@ int ui_run(void) {
                 input_led_stop();
                 LOG("window closed\n");
                 backend_quit();  // (before exit(): see there)
-                exit(0);
+                extern void rt_quit_exit(void);  // (runtime/main.c: exit, or "Restart Now" - a new copy first)
+                rt_quit_exit();
             }
             extern bool input_user_blocked(const SDL_Event *e);
             if (input_user_blocked(&e)) continue;  // scripted test runs: the real keyboard / mouse / pads do nothing (as metal.m)

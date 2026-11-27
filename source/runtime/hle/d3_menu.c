@@ -15,6 +15,11 @@ int d3_online_status_shown(void) { return getenv("D3_MENU_ALL") != NULL; }
 // Options tabs (main+0x20db60): 1 Multiplayer, 2 Privacy - left out (online settings; local co-op needs neither)
 int d3_options_tab_shown(int which) { (void)which; return getenv("D3_MENU_ALL") != NULL; }
 
+// Pause menu entries (main+0x21f480, d3_gen_patch.py 2d) by the game's id: 2 Network Settings, 4 Challenges,
+// 5 Leaderboards, 6 Season Journey, 9 Connect to Diablo Servers. Challenges work offline and are on the main menu's More
+// page too (GitHub #3); in play they were only there, so checking progress meant leaving the game (GitHub #16).
+int d3_pause_entry_shown(int id) { return id == 4 || getenv("D3_MENU_ALL") != NULL; }
+
 // "Exit Game" at the end of the main menu (the tester 2026-11-16). The menu lists its entries in id order and the spare ids
 // are all before More (13), so three shift by one: id 11 shows "PC Settings" (12's label), 12 shows "More" (13's) and
 // acts as it, 13 shows "Exit Game" (23's label, "Quit Demo", renamed by d3_text.c) and closes the game.

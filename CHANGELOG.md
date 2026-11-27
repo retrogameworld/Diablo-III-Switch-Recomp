@@ -2,6 +2,19 @@
 
 What changed in each release of Diablo III Recomp (Windows). The newest is at the top.
 
+## v1.2.6 (2026-11-27)
+- Challenges are in the pause menu too, so you can check your progress without leaving the game. (#16)
+- Mods: new cheat **No Rift Close Timer**: a rift closes as soon as you turn it in at Orek, without the 30-second
+  "Nephalem Rift closes in" wait before the obelisk works again. (#15)
+- Mods: new cheat **Unlock All Cosmetics**: every wing, pet, pennant and portrait frame is learned when you enter a
+  game, and they stay on your account. (#15)
+- Cosmetics the Switch version never had a picture for show their category's emblem instead of the pink
+  "i need an icon" box, and their description says they are only included in the PC version.
+- Settings that only take effect at a start (Mods, the game blur filter): closing the settings menu after changing
+  one asks **Restart Now** or **Later**; Restart Now closes the game and starts it again.
+- PC Settings > Quit has **Restart Game**: closes the game and starts it again.
+- **After updating, the first start builds the game code again, once.**
+
 ## v1.2.5 (2026-11-27)
 - Mods: All Difficulties now also opens Torment VII-XVI in Game Settings (they stayed "locked until level 70"). (#15)
 - Mods: Auto Pickup now picks up gear and gems too, not only gold and materials. (#15)

@@ -1,5 +1,6 @@
 // LAS Recomp entry: load modules, set up the kernel, run nn::init::Start on the main thread.
 #include <SDL3/SDL.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -109,10 +110,22 @@ void backend_guest_memory_reset(void);  // renderer: guest memory was replaced (
 void backend_clear_window(void);      // a black frame while the game is down
 void backend_quit(void);              // quitting: the render thread stopped, the GPU idle, caches kept (before exit())
 
+// The settings menu's "Restart Now" (runtime/ui/menu.mm): the game quits as when its window is closed, then a new
+// copy starts with the same command line and reads the changed settings (the ones that apply only at a start).
+static _Atomic int g_restart_on_quit;
+void rt_restart_on_quit(void) { g_restart_on_quit = 1; }
+void rt_quit_exit(void) {  // (after backend_quit: the quit sites call this instead of exit(0))
+    if (g_restart_on_quit) {
+        bool ok = plat_spawn_self();
+        LOG("[restart] %s\n", ok ? "starting the game again" : "could not start the game again");
+    }
+    exit(0);
+}
+
 static void reboot_idle(void) {  // (main thread, while guest threads stop) keep the window alive
     SDL_Event e;
     while (SDL_PollEvent(&e))
-        if (e.type == SDL_EVENT_QUIT) { LOG("window closed\n"); backend_quit(); exit(0); }
+        if (e.type == SDL_EVENT_QUIT) { LOG("window closed\n"); backend_quit(); rt_quit_exit(); }
 }
 
 static void teardown(void) {

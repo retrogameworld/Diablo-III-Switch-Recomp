@@ -171,6 +171,17 @@ void plat_exec(char *const argv[]) {
     if (plat_exe_path(path, sizeof path)) execv(path, *_NSGetArgv());
 }
 
+bool plat_spawn_self(void) {
+    pid_t pid = fork();
+    if (pid < 0) return false;
+    if (pid == 0) {  // (the child: a new session, then this program again)
+        setsid();
+        plat_exec(NULL);
+        _exit(127);
+    }
+    return true;
+}
+
 const char *plat_symbol(uint64_t pc, uint64_t *offset) {
     Dl_info di = {0};
     if (!dladdr((void *)(uintptr_t)pc, &di) || !di.dli_sname) return NULL;

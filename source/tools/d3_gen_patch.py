@@ -35,6 +35,9 @@ MOD_ENTRIES = [
     0x185aa0,  # the Challenge Rift screen's error (log)
     0x04edc0,  # ChallengeRiftRewardEarned_SaveToProfile (season tag)
     0x7764e0,  # ChallengeRiftGrantRewardToPlayerIfEligible (season tag)
+    0x8db530,  # the scripts' DungeonFinderClosingTriggered(seconds) (no rift close timer, GitHub #15)
+    0x8a4740,  # the scripts' Wait(seconds) (no rift close timer: the wait right after it)
+    0x505d60,  # an item's flavor text (a cosmetic without an icon: "only in the PC version", d3_icon_placeholder)
 ]
 # Instruction variants, switched at run time (d3_mods_word: 0 = the game's own instruction): main offset ->
 # (the original word, checked by gen.py; [the variant word]) or [(a number, C written by hand)]. d3_mods.c k_sites has
@@ -145,6 +148,16 @@ PATCHES = [
 # 2. the "Disconnected from Diablo Network / Not Signed In" box: main menu (main+0x362884) and pause menu
 #    (main+0x2212b4) show it with SetVisible(1); d3_online_status_shown() decides instead (0 unless D3_MENU_ALL)
 REPLACES = [
+    # 24. an item without an icon (main+0xbf3c4: the icon lookup failed, the game puts "ItemPlaceholderIcon" - a pink
+    #     "i need an icon" box): a cosmetic the Switch version never sold gets its category's own emblem instead
+    #     (hle/d3_mods.c d3_icon_placeholder; the tester 2026-11-27 "remove the pink thing its too ugly")
+    ('main_035.c',
+     '    c->x[1] = (uint64_t)(0x7000dd4000ull);\n    c->x[1] = (uint64_t)(c->x[1] + 0xffdull);\n'
+     '    c->x[2] = (uint64_t)(0ull | c->x[19]);\n    c->x[30] = 0x70000bf3d4ull; f_70000f29c0(c);\n',
+     '    if (!d3_icon_placeholder(c)) {  /* d3_gen_patch.py */\n'
+     '    c->x[1] = (uint64_t)(0x7000dd4000ull);\n    c->x[1] = (uint64_t)(c->x[1] + 0xffdull);\n'
+     '    c->x[2] = (uint64_t)(0ull | c->x[19]);\n    c->x[30] = 0x70000bf3d4ull; f_70000f29c0(c);\n    }\n',
+     'int d3_icon_placeholder(Cpu *c);  /* d3_gen_patch.py */\n'),
     # 23. a string the game's text tables lack (main+0x6f1518: snprintf "%s - %d:%s" with "!!Missing!!", the id and its
     #     key): a readable name made from the key instead (hle/d3_mods.c d3_missing_text; the offline Anniversary buffs
     #     showed "!!Missing!! - 77545:Anniversary_Buff_EXPMF_11" under Temporary Effects, GitHub #15)
@@ -229,14 +242,15 @@ REPLACES = [
      '    c->x[1] = (uint32_t)(0u | ((uint32_t)c->x[20] & (uint32_t)d3_online_status_shown()));  /* d3_gen_patch.py */\n'
      '    c->pc = c->x[8]; c->x[30] = 0x70003606acull; rt_dispatch(c);\n',
      'int d3_online_status_shown(void);  /* d3_gen_patch.py */\n'),
-    # 2d. pause menu (main+0x21f480 adds its entries with main+0x21f780): Network Settings, Challenges, Leaderboards,
-    #     Season Journey and Connect to Diablo Servers only when d3_options_tab_shown(3) (D3_MENU_ALL)
+    # 2d. pause menu (main+0x21f480 adds its entries with main+0x21f780, the entry's id at sp+0x18): Network Settings
+    #     (2), Challenges (4), Leaderboards (5), Season Journey (6) and Connect to Diablo Servers (9) only when
+    #     d3_pause_entry_shown(id) says so (d3_menu.c: Challenges yes, the online ones only with D3_MENU_ALL)
 ] + [
     ('main_077.c',
      '    c->x[30] = 0x%xull; f_700021f780(c);\n' % ret,
-     '    if (d3_options_tab_shown(3)) { c->x[30] = 0x%xull; f_700021f780(c); }  /* d3_gen_patch.py */\n' % ret,
-     'int d3_options_tab_shown(int which);  /* d3_gen_patch.py */\n')
-    for ret in (0x700021f55c, 0x700021f610, 0x700021f65c, 0x700021f6a4, 0x700021f704)
+     '    if (d3_pause_entry_shown(%d)) { c->x[30] = 0x%xull; f_700021f780(c); }  /* d3_gen_patch.py */\n' % (id_, ret),
+     'int d3_pause_entry_shown(int id);  /* d3_gen_patch.py */\n')
+    for ret, id_ in ((0x700021f55c, 2), (0x700021f610, 4), (0x700021f65c, 5), (0x700021f6a4, 6), (0x700021f704, 9))
 ] + [
     # 2e. pause menu's button hint "View Online Friends" (main+0x1bb550, call returning to main+0x22120c)
     ('main_077.c',
@@ -279,6 +293,12 @@ UPGRADES = [
     ('main_117.c',
      '    if (d3_menu_hidden((uint32_t)c->x[0], (uint32_t)c->x[1])) { c->x[0] = 0; return; }  /* d3_gen_patch.py */\n',
      '    { int h_ = d3_menu_hidden((uint32_t)c->x[0], (uint32_t)c->x[1]); if (h_) { c->x[0] = h_ == 2; return; } }  /* d3_gen_patch.py */\n'),
+] + [
+    # (2d before v1.2.6: every one of those pause menu entries behind d3_options_tab_shown(3))
+    ('main_077.c',
+     '    if (d3_options_tab_shown(3)) { c->x[30] = 0x%xull; f_700021f780(c); }  /* d3_gen_patch.py */\n' % ret,
+     '    if (d3_pause_entry_shown(%d)) { c->x[30] = 0x%xull; f_700021f780(c); }  /* d3_gen_patch.py */\n' % (id_, ret))
+    for ret, id_ in ((0x700021f55c, 2), (0x700021f610, 4), (0x700021f65c, 5), (0x700021f6a4, 6), (0x700021f704, 9))
 ]
 
 
@@ -315,6 +335,9 @@ def main():
         p = os.path.join(GEN, fn)
         s = open(p, encoding='utf-8').read()
         if new in s:
+            if decl not in s:  # (an upgraded change may call a function its old text didn't)
+                i = s.index('\n', s.index('#include "simd.h"')) + 1
+                open(p, 'w', encoding='utf-8', newline='\n').write(s[:i] + decl + s[i:])
             results.append((fn, 'already patched (status box)'))
             continue
         if s.count(old) != 1:
@@ -378,6 +401,7 @@ def apply_text(fn, s):
         if not here(f, old):
             continue
         if new in s:
+            s = add_decl(s, decl)  # (an upgraded change may call a function its old text didn't)
             _applied.add(('R', k))
             continue
         n = s.count(old)

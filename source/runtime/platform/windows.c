@@ -640,6 +640,18 @@ void plat_exec(char *const argv[]) {
     ExitProcess(code);
 }
 
+// A new copy that runs on its own: no handles inherited and its own log session (LASRECOMP_LOG_FILE is this one's,
+// which this process closes and publishes as it exits).
+bool plat_spawn_self(void) {
+    STARTUPINFOW si = {.cb = sizeof si};
+    PROCESS_INFORMATION pi;
+    _putenv_s("LASRECOMP_LOG_FILE", "");
+    if (!CreateProcessW(NULL, GetCommandLineW(), NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) return false;
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return true;
+}
+
 // ---- diagnostics
 // DLL frames are named module+offset; frames in our own executable are left to the caller, which maps
 // them to guest functions (runtime/dispatch.c) - mingw builds carry DWARF, not PDB symbols.

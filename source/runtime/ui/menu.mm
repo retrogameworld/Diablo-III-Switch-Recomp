@@ -97,8 +97,40 @@ static std::atomic<bool> g_open_request{false};
 static std::atomic<bool> g_clear_keys{false};
 static bool g_open_quiet;  // (opened from the game's own menu entry: the game already made its accept sound)
 extern "C" void menu_request_open(void) { g_open_request.store(true); }
+// ---- "Restart Now?" (the tester 2026-11-27: "whenever a restart is needed make a dialog 'restart now?' so the game will auto
+// restart"). The settings the game reads only as it starts (the Mods tab: season, buffs, cheats, speeds, legendary drops;
+// the game's own blur filter): closing the menu with one of them changed from what the game started with asks Restart
+// Now (the game quits and a new copy starts: runtime/main.c rt_quit_exit) or Later (asked again only after another change).
+struct RestartSet { long long v[7]; };
+static RestartSet restart_set_now(void) {
+    return {{g_settings.d3_season, g_settings.d3_buffs, g_settings.d3_cheats, g_settings.d3_loot, g_settings.d3_move,
+             g_settings.d3_atk, g_settings.game_fxaa}};
+}
+static bool restart_same(const RestartSet &a, const RestartSet &b) { return !memcmp(a.v, b.v, sizeof a.v); }
+static RestartSet g_restart_started, g_restart_asked;  // (as the game started; as last answered with Later)
+static bool g_restart_known;
+static std::atomic<bool> g_restart_ask{false}, g_restart_focus{false};
+static void restart_later(void);
+static std::atomic<uint64_t> g_restart_ask_ms{0};  // (when the question came up)
+// (Back / the menu button again within this time of the question coming up is the press that closed the menu
+// repeated, not an answer: the tester 2026-11-27 saw no question - his log: asked, then closed at once)
+static bool restart_answer_ok(void) { return SDL_GetTicks() - g_restart_ask_ms.load() > 1000; }
+static void menu_close_by_user(void) {  // (Back, F1, the close X: the player closing the menu)
+    if (g_restart_ask.load()) return;  // (the question stays until Restart Now or Later is picked, or Back after a moment)
+    RestartSet n = restart_set_now();
+    if (g_restart_known && !restart_same(n, g_restart_started) && !restart_same(n, g_restart_asked)) {
+        g_restart_ask_ms.store(SDL_GetTicks());
+        g_restart_ask.store(true);
+        g_restart_focus.store(true);
+        LOG("[menu] a change needs a restart: asking\n");
+        return;
+    }
+    set_open(false);
+}
 static void set_open(bool open) {
     if (open == g_open.load()) return;
+    if (open && !g_restart_known) g_restart_started = g_restart_asked = restart_set_now(), g_restart_known = true;
+    if (!open) g_restart_ask.store(false);
     LOG("[menu] %s\n", open ? "opened" : "closed");
     g_clear_keys.store(true);
     g_open.store(open);
@@ -197,7 +229,8 @@ bool menu_handle_event(const SDL_Event *e) {
     case SDL_EVENT_KEY_DOWN:
         if (!e->key.repeat && (e->key.scancode == SDL_SCANCODE_F1 ||
                                (e->key.scancode == SDL_SCANCODE_ESCAPE && !g_open.load()))) {
-            if (!typing) set_open(!g_open.load());  // (Esc with the menu open goes to ImGui below: it cancels a field)
+            if (!typing) { if (g_open.load()) menu_close_by_user(); else set_open(true); }  // (Esc with the menu open goes
+                                                                                           //  to ImGui below: it cancels a field)
             return true;
         }
         if (!e->key.repeat && (e->key.scancode == SDL_SCANCODE_F11 ||
@@ -237,7 +270,7 @@ bool menu_handle_event(const SDL_Event *e) {
         if (down && !typing && ((back_down && start_down) || e->gbutton.button == SDL_GAMEPAD_BUTTON_GUIDE ||
                                 (game_is_d3() && e->gbutton.button == SDL_GAMEPAD_BUTTON_BACK &&
                                  !d3_pad_view_is_minus(SDL_GetGamepadFromID(e->gbutton.which))))) {
-            set_open(!g_open.load());
+            if (g_open.load()) menu_close_by_user(); else set_open(true);
             return true;
         }
         if (!capturing()) return false;
@@ -503,7 +536,7 @@ static void d3_button_hints(float scale) {
     x = d3_hint(dl, f, fs, x, cy, 1, "Back", scale, xbox);
     {   // (a click on Back closes the menu, as B does)
         ImVec2 m = io.MousePos;
-        if (ImGui::IsMouseClicked(0) && m.x >= bx0 && m.x <= x && fabsf(m.y - cy) < fs) set_open(false);
+        if (ImGui::IsMouseClicked(0) && m.x >= bx0 && m.x <= x && fabsf(m.y - cy) < fs) menu_close_by_user();
     }
     x += gap;
     x = d3_hint(dl, f, fs, x, cy, 2, "", scale, xbox) + 6 * scale;
@@ -1000,34 +1033,42 @@ static void tab_audio(void) {
 // Quit: back to the start screen (in game: the game reboots to it) or out to the desktop. Each asks first (progress
 // since the last save is lost); B / Esc or Cancel backs out.
 extern "C" void rt_request_reboot(int kind);  // runtime/main.c (RT_REBOOT_TITLE = 2: the start screen)
+extern "C" void rt_restart_on_quit(void);     // runtime/main.c (quitting starts a new copy: Restart Game, Restart Now)
 void opt_focus_first_next(void);  // option_rows.mm
 // (Circle / Esc on "Yes / Cancel" goes back to the two choices; it closed the whole menu too - the tester 2026-11-17)
 static bool g_quit_took_back;
 static bool quit_tab_took_back(void) { bool t = g_quit_took_back; g_quit_took_back = false; return t; }
 static void tab_quit(float scale, bool in_game) {
-    static int ask;  // 0: the two choices; 1: start screen?; 2: desktop?
+    static int ask;  // 0: the choices; 1: start screen?; 2: desktop?; 3: restart?
     int ask_was = ask;
     if (ask && (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)))
         ask = 0, g_quit_took_back = true, ui_sound(UI_SND_CLOSE);  // (the back click)
     const char *lost = in_game ? "\n\nProgress since your last save is lost." : "";
-    char d1[200], d2[200];
+    char d1[200], d2[200], d3r[260];
     bool d3 = game_is_d3();
     snprintf(d1, sizeof d1, d3 ? "Restarts the game at its title screen.%s" : "Leaves the game and goes back to the LAS Recomp start screen.%s", lost);
     snprintf(d2, sizeof d2, d3 ? "Closes the game.%s" : "Closes LAS Recomp.%s", lost);
+    // (the tester 2026-11-27: "add a restart button in the quit section" - the program itself closes and starts again, so the
+    // settings that apply only at a start take effect; as the settings menu's Restart Now, runtime/main.c rt_quit_exit)
+    snprintf(d3r, sizeof d3r, "Closes the game and starts it again. Settings that apply only at a start (Mods, the game "
+                              "blur filter) take effect.%s", lost);
     opt_begin("##quit", scale);
     opt_section("Quit");
     if (!ask) {
         if (!in_game) opt_disable_next();  // (already on it)
         if (opt_action(d3 ? "Quit to Title Screen" : "Quit to Start Screen", "", in_game ? d1 : "You're on the start screen.")) ask = 1;
+        if (opt_action("Restart Game", "", d3r)) ask = 3;
         if (opt_action("Quit to Desktop", "", d2)) ask = 2;
     } else {
-        if (opt_action(ask == 1 ? (d3 ? "Yes, quit to Title Screen" : "Yes, quit to Start Screen") : "Yes, quit to Desktop", "",
-                       ask == 1 ? d1 : d2)) {
+        const char *yes = ask == 1 ? (d3 ? "Yes, quit to Title Screen" : "Yes, quit to Start Screen")
+                        : ask == 3 ? "Yes, restart the game" : "Yes, quit to Desktop";
+        if (opt_action(yes, "", ask == 1 ? d1 : ask == 3 ? d3r : d2)) {
             settings_save();
             if (ask == 1) {
                 rt_request_reboot(d3 ? 1 : 2);  // (RT_REBOOT_GAME: boot again at once; RT_REBOOT_TITLE: the start screen)
                 set_open(false);
             } else {
+                if (ask == 3) { rt_restart_on_quit(); LOG("[menu] restart game\n"); }
                 SDL_Event q = {};
                 q.type = SDL_EVENT_QUIT;
                 SDL_PushEvent(&q);
@@ -1038,6 +1079,31 @@ static void tab_quit(float scale, bool in_game) {
     }
     opt_end();
     if (ask != ask_was && ImGui::GetCurrentContext()->NavCursorVisible) opt_focus_first_next();  // (the new rows' first)
+}
+
+// "Restart Now?" in place of the tabs (menu_close_by_user asked for it)
+extern "C" void rt_restart_on_quit(void);  // runtime/main.c
+static void restart_later(void) {
+    g_restart_asked = restart_set_now();
+    g_restart_ask.store(false);
+    set_open(false);
+}
+static void restart_prompt(float scale) {
+    opt_begin("##restart", scale);
+    opt_section("Restart Needed");
+    if (opt_action("Restart Now", "",
+                   "Some of your changes only take effect when the game starts. Closes the game and starts it again "
+                   "with them.\n\nProgress since your last save is lost.")) {
+        settings_save();
+        rt_restart_on_quit();
+        LOG("[menu] restart now\n");
+        SDL_Event q = {};
+        q.type = SDL_EVENT_QUIT;
+        SDL_PushEvent(&q);
+    }
+    if (opt_action("Later", "", "Keeps playing. The changes take effect the next time you start the game.")) restart_later();
+    opt_end();
+    if (g_restart_focus.exchange(false)) opt_focus_first_next();  // (the controller's cursor on Restart Now)
 }
 
 extern "C" bool inventory_overlay_wanted(void);
@@ -1715,7 +1781,7 @@ void menu_render(void *cmd, uint32_t target_w, uint32_t target_h) {
             if (hot) dl->AddRectFilled(p, ImVec2(p.x + bx, p.y + bx), IM_COL32(255, 255, 255, 20), 8 * scale);
             dl->AddLine(ImVec2(p.x + m, p.y + m), ImVec2(p.x + bx - m, p.y + bx - m), col, t);
             dl->AddLine(ImVec2(p.x + bx - m, p.y + m), ImVec2(p.x + m, p.y + bx - m), col, t);
-            if (close) set_open(false);
+            if (close) menu_close_by_user();
         }
 
         opt_theme(menu_d3_look(), g_menu_font_section, g_menu_font_desc);
@@ -1752,7 +1818,9 @@ void menu_render(void *cmd, uint32_t target_w, uint32_t target_h) {
         }
 #endif
         bool any_popup = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId), typing = ui_text_busy();  // (before the
-        tabs_body(scale, true, NULL);                                                                          //  pages run)
+        bool asking = g_restart_ask.load();                                                                    //  pages run)
+        if (asking) restart_prompt(scale);
+        else tabs_body(scale, true, NULL);
         // B with nothing focused-deeper closes the menu (not the Esc / B that ends typing: typing is from the frame
         // before, so it's still true the frame a field lets go)
         bool back = ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false) || ImGui::IsKeyPressed(ImGuiKey_Escape, false);
@@ -1764,9 +1832,11 @@ void menu_render(void *cmd, uint32_t target_w, uint32_t target_h) {
                 gc.NavWindow ? gc.NavWindow->Name : "none", gc.ActiveId);
         }
         bool quit_took = quit_tab_took_back();
-        if (back && !any_popup && !typing && !ui_text_busy() && !controls_ui_took_back() && !rando_tab_took_back() &&
-            !quit_took && focused)
-            set_open(false);
+        if (asking) {
+            if (back && restart_answer_ok()) restart_later();  // (Back on "Restart Now?": Later)
+        } else if (back && !any_popup && !typing && !ui_text_busy() && !controls_ui_took_back() && !rando_tab_took_back() &&
+                   !quit_took && focused)
+            menu_close_by_user();
         ImGui::PopFont();
         g_font_big = keep_big;
         ImGui::End();
