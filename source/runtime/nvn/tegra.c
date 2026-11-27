@@ -2,6 +2,7 @@
 // (block height) and in depth (block depth). Levels shrink their block height as they shrink.
 #include "tegra.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 static uint32_t div_up(uint32_t a, uint32_t b) { return (a + b - 1) / b; }
@@ -15,6 +16,11 @@ static uint64_t align_up(uint64_t a, uint64_t b) { return (a + b - 1) / b * b; }
 uint32_t tegra_default_block_height_log2(uint32_t height_in_blocks) {
     uint32_t gobs = div_up(height_in_blocks, 8);
     uint32_t log2 = 0;
+    // D3_BH_RULE=up / down (debug): the earlier rules, to compare a player's older version in a test run
+    static int rule = -1;
+    if (rule < 0) { const char *e = getenv("D3_BH_RULE"); rule = !e ? 0 : !strcmp(e, "up") ? 1 : !strcmp(e, "down") ? 2 : 0; }
+    if (rule == 1) { while ((1u << log2) < gobs && log2 < 4) log2++; return log2; }
+    if (rule == 2) { while ((2u << log2) <= gobs && log2 < 4) log2++; return log2; }
     while ((3u << log2) <= 2 * gobs && log2 < 4) log2++;
     return log2;
 }
