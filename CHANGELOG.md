@@ -2,6 +2,21 @@
 
 What changed in each release of Diablo III Recomp (Windows). The newest is at the top.
 
+## v1.3.1 (2026-11-28)
+- Faster on older CPUs: the game's 3D models now stay on the graphics card between frames instead of being copied
+  there again for every draw. Busy places such as towns with many characters used to slow down on 4-core CPUs even
+  with the GPU half idle; in New Tristram the renderer now spends about 40% less CPU time, and its vertex work is
+  about 10 times smaller. Thanks to the player who profiled it and found the cause.
+- Also has everything in v1.3.0 below: keyboard key-cap button icons, and the smooth key stick in menus. (#20)
+
+## v1.3.0 (2026-11-28)
+- Keyboard: in the game's menus, hold one direction key and add a second one to turn the stick slowly toward it; let
+  go of the second key to stop. Every equipment slot in the Inventory circle (and every skill choice) can now be
+  picked from the keyboard. Walking works as before. (#20)
+- **Button icons: Keyboard** (PC Settings > Controls): the game shows your keys as key caps instead of controller
+  buttons. On Auto it shows the keys while you play with the keyboard and the controller's buttons once you use the
+  controller again. (#20)
+
 ## v1.2.7 (2026-11-28)
 - If the game stops with its own error (such as "Out of Memory"), the log now says the error, where it came from and
   how much memory the game was using, so a report with the log shows what happened.

@@ -866,7 +866,10 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
     // (Diablo III's prompt atlas: drawn again when the game's menus open or close - its shoulder labels differ, texpatch.c)
     extern int d3_menu_open(void), input_pad_family(void);
     extern int d3_prompts_nintendo(void);
-    int d3_mode = b->uploaded && b->data_hash == 0x450cd94995bd5c90ull ? d3_menu_open() + 2 * (d3_prompts_xbox()) + 4 * d3_prompts_nintendo() : -1;
+    // (the key caps - "Button icons" Keyboard, GitHub #20 - have no play / menus difference: no redraw as menus open)
+    extern int d3_prompt_look(void);
+    int d3_look = b->uploaded && (b->data_hash == 0x450cd94995bd5c90ull || b->data_hash == 0x1fd735c20acb0535ull) ? d3_prompt_look() : -1;
+    int d3_mode = d3_look < 0 ? -1 : b->data_hash == 0x1fd735c20acb0535ull || (d3_look & 8) ? d3_look : d3_look + d3_menu_open();
     if (d3_mode >= 0 && b->tp_gen != (uint32_t)d3_mode + 1) restyle = true;
     if (b->uploaded && b->hd && b->data_hash == D3_CTRL_PAGE && b->hd_variant != (d3_prompts_xbox())) restyle = true;
     // The OS's page write tracking (exec.c vk_pages_changed, shared with the vertex cache): texture memory the CPU
@@ -910,8 +913,16 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
         extern int d3_menu_open(void), d3_prompts_xbox(void), g_d3_label_menu, g_d3_label_xbox;
         g_d3_label_menu = d3_menu_open();
         g_d3_label_xbox = d3_prompts_xbox();
-        extern int d3_prompts_nintendo(void);
-        b->tp_gen = (uint32_t)(g_d3_label_menu + 2 * g_d3_label_xbox + 4 * d3_prompts_nintendo()) + 1;
+        extern int d3_prompt_look(void), g_d3_label_kb;
+        int look = d3_prompt_look();
+        g_d3_label_kb = (look & 8) != 0;
+        b->tp_gen = (uint32_t)(g_d3_label_kb ? look : look + g_d3_label_menu) + 1;
+    }
+    if (h == 0x1fd735c20acb0535ull && game_is_d3()) {  // (the world's prompt: drawn again when the look changes too)
+        extern int d3_prompt_look(void), g_d3_label_kb;
+        int look = d3_prompt_look();
+        g_d3_label_kb = (look & 8) != 0;
+        b->tp_gen = (uint32_t)look + 1;
     }
     if (hd_replace(t, b, h, mf.vf)) { b->data_hash = h; b->uploaded = true; return; }
     if (b->hd) { hd_release(b); destroy_image(b); create_image(t, b); }  // (other contents now: the game's own image)

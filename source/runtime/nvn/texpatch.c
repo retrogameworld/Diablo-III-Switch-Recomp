@@ -18,6 +18,7 @@
 // glyphs of its own: keyboard bindings don't change the prompts.)
 #include "texpatch.h"
 
+#include <SDL3/SDL_scancode.h>
 #include <math.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -598,6 +599,15 @@ static void draw_rect(float *cv, float x0, float y0, float x1, float y1, float t
 static bool draw_text(float *cv, const char *text) {
     if (!g_font_ok) return false;
     float sc = stbtt_ScaleForPixelHeight(&g_font, 200);
+    {   // (longer names - a keyboard key's, "Bksp" - drawn smaller so they fit the canvas instead of being cut off)
+        float wd = 0;
+        for (const char *p = text; *p; p++) {
+            int adv, lsb;
+            stbtt_GetCodepointHMetrics(&g_font, *p, &adv, &lsb);
+            wd += adv * sc;
+        }
+        if (wd > CV - 16) sc *= (CV - 16) / wd;
+    }
     float x = 8;
     for (const char *p = text; *p; p++) {
         int adv, lsb, x0, y0, x1, y1;
@@ -1329,6 +1339,9 @@ static uint32_t g_d3_w, g_d3_h;
 // g_d3_label_menu: the menu layout (else play); g_d3_label_xbox: an Xbox-style controller is in use (the tester 2026-11-15:
 // Xbox controllers too) - A / B / X / Y in their colours and LB / RB / LT / RT, by the same positions.
 int g_d3_label_menu, g_d3_label_xbox;
+// g_d3_label_kb: the keyboard's keys instead ("Button icons" Keyboard, or Auto while the keyboard is played with;
+// GitHub #20): each button picture becomes a key cap with the key bound to that Switch button (runtime/hle/bindings.c)
+int g_d3_label_kb;
 static const char *d3_label(const char *t) {
     if (!t) return t;
     int sw = !strcmp(t, "L2") ? 0 : !strcmp(t, "L1") ? 1 : !strcmp(t, "R1") ? 2 : !strcmp(t, "R2") ? 3 : -1;  // (L R ZL ZR)
@@ -1387,6 +1400,90 @@ static void d3_ink(const float *cv, int *x0, int *y0, int *x1, int *y1) {
             }
     if (*x1 < *x0) { *x0 = *y0 = 0; *x1 = *y1 = CV - 1; }
 }
+
+// ------------------------------------------------------------------ Diablo III: key caps (keyboard prompts, #20)
+// The key bound to Switch input `slot`, short enough for a key cap; *arrow: 0-3 (up, down, left, right) for the arrow
+// keys (drawn as arrows), else -1
+static const char *d3_key_text(int slot, int *arrow) {
+    int sc = slot >= 0 && slot < BIND_KEY_COUNT ? g_bind_key[slot] : 0;
+    *arrow = sc == SDL_SCANCODE_UP ? 0 : sc == SDL_SCANCODE_DOWN ? 1 : sc == SDL_SCANCODE_LEFT ? 2 :
+             sc == SDL_SCANCODE_RIGHT ? 3 : -1;
+    if (sc <= 0) return "?";
+    static const struct { const char *name, *cap; } shortname[] = {
+        {"Return", "Ent"}, {"Backspace", "Bksp"}, {"Space", "Spc"}, {"Escape", "Esc"}, {"CapsLock", "Caps"},
+        {"Left Shift", "Shft"}, {"Right Shift", "Shft"}, {"Left Ctrl", "Ctrl"}, {"Right Ctrl", "Ctrl"},
+        {"Left Alt", "Alt"}, {"Right Alt", "Alt"}, {"Delete", "Del"}, {"Insert", "Ins"}, {"PageUp", "PgUp"},
+        {"PageDown", "PgDn"}, {"Keypad Enter", "NEnt"},
+    };
+    const char *n = bind_key_label(sc);
+    for (unsigned i = 0; i < sizeof shortname / sizeof *shortname; i++)
+        if (!strcmp(n, shortname[i].name)) return shortname[i].cap;
+    static char buf[8][8];  // (a few in use at once: one per cap being drawn)
+    static int at;
+    char *b = buf[at++ & 7];
+    if (!strncmp(n, "Keypad ", 7)) snprintf(b, 8, "N%.3s", n + 7);  // (numpad keys: N8, N+...)
+    else snprintf(b, 8, "%.4s", n);
+    return b;
+}
+
+static void d3_arrow(float *cv, int dir) {  // (as draw_label's d-pad arrows: drawn pointing up, then turned)
+    static const float up[3][4] = {{128, 228, 128, 40}, {128, 34, 46, 116}, {128, 34, 210, 116}};
+    Seg s[3];
+    for (int i = 0; i < 3; i++) {
+        float p[4];
+        for (int k = 0; k < 4; k += 2) {
+            float x = up[i][k] - 128, y = up[i][k + 1] - 128;
+            float rx = dir == 0 ? x : dir == 1 ? -x : dir == 2 ? y : -y;
+            float ry = dir == 0 ? y : dir == 1 ? -y : dir == 2 ? -x : x;
+            p[k] = rx + 128, p[k + 1] = ry + 128;
+        }
+        s[i] = (Seg){p[0], p[1], p[2], p[3]};
+    }
+    draw_segs(cv, s, 3, 22);
+}
+
+// A key cap centred at (cx, cy), half size hw x hh, over `img` (cw x ch RGBA, transparent where nothing is): a dark
+// rounded square with a light rim and the name of the key bound to Switch input `slot` in white. Simple geometry and
+// the system font, as the other prompts.
+static void d3_keycap(uint8_t *img, uint32_t cw, uint32_t ch, float cx, float cy, float hw, float hh, int slot) {
+    static float kcv[CV * CV];
+    memset(kcv, 0, sizeof kcv);
+    int arrow;
+    const char *t = d3_key_text(slot, &arrow);
+    bool label = true;
+    if (arrow >= 0) d3_arrow(kcv, arrow);
+    else label = draw_text(kcv, t);
+    int u0, v0, u1, v1;
+    d3_ink(kcv, &u0, &v0, &u1, &v1);
+    float iw = (float)(u1 - u0 + 1), ih = (float)(v1 - v0 + 1);
+    // (the label's box on the cap's face; the flat wide caps of the shoulder buttons get a taller one, else their key
+    // read small next to the PlayStation pictures' L1 / R2)
+    float lw = hw * 1.5f, lh = hh * (arrow >= 0 ? 1.0f : hw > hh * 1.6f ? 1.3f : 0.95f);
+    float sc = fminf(lw / iw, lh / ih), ox = cx - iw * sc / 2, oy = cy - hh * 0.06f - ih * sc / 2;
+    float r = fminf(hw, hh) * 0.32f, rimw = fmaxf(1.2f, fminf(hw, hh) * 0.11f);
+    for (uint32_t y = 0; y < ch; y++)
+        for (uint32_t x = 0; x < cw; x++) {
+            float px = x + 0.5f - cx, py = y + 0.5f - cy;
+            float qx = fabsf(px) - (hw - r), qy = fabsf(py) - (hh - r);
+            float d = hypotf(fmaxf(qx, 0), fmaxf(qy, 0)) + fminf(fmaxf(qx, qy), 0) - r;  // (rounded box distance)
+            float cov = sat(0.5f - d);
+            if (cov <= 0) continue;
+            float rim = sat(d + rimw + 0.5f), low = sat(py / hh);  // (the lower part a little darker: a key's side)
+            float body = 66 - 18 * low;
+            float a = label ? d3_cover(kcv, u0 + (x - ox) / sc, v0 + (y - oy) / sc, 1 / sc, 1 / sc, 0, 0) : 0;
+            uint8_t *p = img + ((size_t)y * cw + x) * 4;
+            float c[3] = {body + (148 - body) * rim, body + 2 + (150 - body) * rim, body + 8 + (156 - body) * rim};
+            for (int q = 0; q < 3; q++) {
+                float v = c[q] * (1 - a) + 240 * a;
+                p[q] = (uint8_t)(p[3] ? p[q] * (1 - cov) + v * cov : v);  // (anti-aliased edge over what was there)
+            }
+            float al = cov * 255;
+            if (al > p[3]) p[3] = (uint8_t)al;
+        }
+}
+// the key caps' place in the round buttons' cells (measured as the round cells are drawn: the sideways d-pad cells
+// share their rows)
+static float g_kc_cy = 96 - 64, g_kc_half = 20;
 
 // The face-button diagrams (four circles, the button to press filled in, e.g. "Press [diagram] to join") show the
 // Nintendo position: A is the right circle, B the bottom one. With the DualSense layout A is Cross (bottom) and B is
@@ -1526,7 +1623,11 @@ static void d3_sideways_icons(uint8_t *blocks, uint32_t row) {
             for (uint32_t y = 0; y < 64; y++)
                 for (uint32_t x = 0; x < 54 && doff + pad + x < dcw && soff + x < scw; x++)
                     memcpy(dst + (y * dcw + doff + pad + x) * 4, src + (y * scw + soff + x) * 4, 4);
-            if (!getenv("D3_DPAD_AS_FACE")) d3_dpad_draw(dst, dcw, doff + pad, d3_sideways[i].dir);
+            if (g_d3_label_kb) {  // keyboard: a key cap with the d-pad's key (an arrow for the arrow keys)
+                static const uint8_t slot[4] = {BIND_UP, BIND_DOWN, BIND_LEFT, BIND_RIGHT};
+                for (uint32_t k = 0; k < dcw * 64; k++) memset(dst + k * 4, 0, 4);
+                d3_keycap(dst, dcw, 64, doff + pad + 27.0f, g_kc_cy, g_kc_half, g_kc_half, slot[d3_sideways[i].dir]);
+            } else if (!getenv("D3_DPAD_AS_FACE")) d3_dpad_draw(dst, dcw, doff + pad, d3_sideways[i].dir);
             d3_region_put(blocks, row, dst, dbx0, dbx1, dcw, 64, 128);
             // (the bottom-lit diagram's lit circle reaches below its cell: an orange dot stayed under the icon)
             uint32_t ebx0, ebx1, ecw;
@@ -1652,6 +1753,29 @@ static void d3_buttons_draw(uint8_t *blocks, uint32_t w, uint32_t h, uint32_t ro
                     if ((int)y > iy1) iy1 = y;
                 }
         if (ix1 < 0) { free(img); continue; }
+        if (g_d3_label_kb) {  // keyboard: a key cap in the button's place, the bound key on it (GitHub #20)
+            // (the Switch button of each cell, in d3_cells' order)
+            static const uint8_t slot[] = {BIND_B, BIND_A, BIND_Y, BIND_X, BIND_L, BIND_R, BIND_ZL, BIND_ZR,
+                                           BIND_B, BIND_Y, BIND_X, BIND_L, BIND_R, BIND_ZL, BIND_ZR, BIND_A};
+            _Static_assert(sizeof slot == sizeof d3_cells / sizeof *d3_cells, "a slot per cell");
+            uint32_t cx0 = k->x0 - bx0 * 4, cx1 = k->x1 - bx0 * 4;  // (the cell's own columns: the blocks reach past it)
+            for (uint32_t y = 0; y < ch; y++)
+                for (uint32_t x = cx0; x < cx1 && x < cw; x++) memset(img + ((size_t)y * cw + x) * 4, 0, 4);
+            float cx = (ix0 + ix1 + 1) / 2.0f, cy = (iy0 + iy1 + 1) / 2.0f, hw, hh;
+            if (k->kind == D3_ROUND) {
+                hw = hh = (ix1 - ix0 + iy1 - iy0 + 2) / 4.0f * 0.88f;
+                g_kc_cy = cy, g_kc_half = hw;
+            } else if (k->kind == D3_SHOULDER) {
+                hw = (ix1 - ix0 + 1) / 2.0f * 0.94f, hh = fminf((iy1 - iy0 + 1) / 2.0f * 0.94f, hw);
+            } else {  // a letter inside text: a small cap the letter's height, as wide as the cell allows
+                // (L / R's letters are small ones: their caps at least 20 px tall, or the key on them can't be read)
+                hh = fmaxf((iy1 - iy0 + 1) * 0.62f, 10);
+                hw = fminf(fmaxf(hh, (ix1 - ix0 + 1) * 0.6f), (cx1 - cx0) / 2.0f - 0.5f);
+                cx = (cx0 + cx1) / 2.0f;
+            }
+            d3_keycap(img, cw, ch, cx, cy, hw, hh, slot[c]);
+            goto encode;
+        }
         int lx0 = ix0, ly0 = iy0, lx1 = ix1, ly1 = iy1;  // where the new label goes
         if (k->kind == D3_PLAIN) {
             for (uint32_t i = 0; i < cw * ch; i++) img[i * 4] = img[i * 4 + 1] = img[i * 4 + 2] = 16, img[i * 4 + 3] = 0;  // the bare letter (and its shadow) goes, colour too (its white showed at the new symbol's edges)
@@ -1718,6 +1842,7 @@ static void d3_buttons_draw(uint8_t *blocks, uint32_t w, uint32_t h, uint32_t ro
                     if (shadow) p[3] = (uint8_t)fmaxf(p[3], a * 255);
                 }
             }
+    encode:
         for (uint32_t by = by0; by < by1; by++)  // encode the cell's blocks again
             for (uint32_t bx = bx0; bx < bx1; bx++) {
                 uint8_t *b = blocks + (size_t)by * row + bx * 16;
@@ -1778,6 +1903,14 @@ void texpatch_d3_world_prompt(uint8_t *rgba, uint32_t w, uint32_t h, uint32_t ro
     }
     static float cv[CV * CV];
     load_font_once();
+    if (g_d3_label_kb) {  // keyboard (GitHub #20): the key cap of the lit button's key, where the disc goes
+        static const uint8_t slot[4] = {BIND_A, BIND_B, BIND_X, BIND_Y};  // (right, bottom, top, left: Switch layout)
+        for (uint32_t y = 0; y < h; y++) memset(rgba + (size_t)y * row, 0, (size_t)w * 4);
+        d3_keycap(rgba, row / 4, h, 34 * s, 31 * s, 22 * s, 22 * s, slot[lit]);
+        static int klogged;
+        if (!klogged++) LOG("[texpatch] Diablo III world prompt: key cap for button %d\n", lit);
+        return;
+    }
     d3_symbol(cv, sym_of[lit], NULL);
     int u0, v0, u1, v1;
     d3_ink(cv, &u0, &v0, &u1, &v1);
@@ -1814,10 +1947,10 @@ void texpatch_d3_world_prompt(uint8_t *rgba, uint32_t w, uint32_t h, uint32_t ro
 // what d3_buttons_draw / d3_cells / the colours make changes.
 #define D3_ATLAS_VERSION "d3 atlas 6 (d-pad icons)"
 typedef struct { char ver[32]; uint64_t in; uint32_t w, h, row, pad; } D3AtlasHdr;
-static struct { uint64_t in; size_t nb, nf; uint8_t *blocks, *full; } d3_mem[4];
+static struct { uint64_t in; size_t nb, nf; uint8_t *blocks, *full; } d3_mem[5];  // ([4]: the key caps)
 static pthread_mutex_t d3_mem_lock = PTHREAD_MUTEX_INITIALIZER;
-static const char *const d3_paths[4] = {"cache/d3_atlas.bin", "cache/d3_atlas_menu.bin", "cache/d3_atlas_xbox.bin",
-                                        "cache/d3_atlas_xbox_menu.bin"};
+static const char *const d3_paths[5] = {"cache/d3_atlas.bin", "cache/d3_atlas_menu.bin", "cache/d3_atlas_xbox.bin",
+                                        "cache/d3_atlas_xbox_menu.bin", "cache/d3_atlas_keys.bin"};
 static uint64_t g_d3_in;  // (texpatch_d3_buttons_mip's memory: the level 0 its levels are made from)
 
 static void d3_mem_put(int mode, uint64_t in, const uint8_t *blocks, size_t nb, const uint8_t *full, size_t nf) {
@@ -1835,7 +1968,7 @@ static void d3_mem_put(int mode, uint64_t in, const uint8_t *blocks, size_t nb, 
 
 static void *d3_preload_thread(void *arg) {
     (void)arg;
-    for (int mode = 0; mode < 4; mode++) {
+    for (int mode = 0; mode < 5; mode++) {
         FILE *f = fopen(d3_paths[mode], "rb");
         if (!f) continue;
         D3AtlasHdr fh, want = {{0}};
@@ -1866,11 +1999,14 @@ void texpatch_d3_buttons(uint8_t *blocks, uint32_t w, uint32_t h, uint32_t row, 
     uint64_t in = 1469598103934665603ull;
     if (content) in = (in ^ content) * 1099511628211ull;
     else for (size_t i = 0; i < nb; i += 8) { uint64_t v; memcpy(&v, blocks + i, 8); in = (in ^ v) * 1099511628211ull; }
+    // (the key caps name the bound keys: their cache holds for those keys only)
+    extern int d3_prompt_look(void);
+    if (g_d3_label_kb) in = (in ^ (uint64_t)d3_prompt_look()) * 1099511628211ull;
     g_d3_in = in;
     D3AtlasHdr hd = {{0}}, fh;
     snprintf(hd.ver, sizeof hd.ver, "%s", D3_ATLAS_VERSION);
     hd.in = in; hd.w = w; hd.h = h; hd.row = row;
-    int mode = (g_d3_label_menu ? 1 : 0) + (g_d3_label_xbox ? 2 : 0);
+    int mode = g_d3_label_kb ? 4 : (g_d3_label_menu ? 1 : 0) + (g_d3_label_xbox ? 2 : 0);
     const char *path = d3_paths[mode];
     if (getenv("D3_DIAG_NUMBERS")) { d3_buttons_draw(blocks, w, h, row); return; }  // (test: never the caches)
     {
@@ -1920,8 +2056,8 @@ static void d3_buttons_mip_draw(uint8_t *blocks, uint32_t lv, uint32_t w, uint32
 void texpatch_d3_buttons_mip(uint8_t *blocks, uint32_t lv, uint32_t w, uint32_t h, uint32_t row) {
     if (!g_d3_full || !lv || lv > 5) return;
     // (each layout's smaller levels kept too, by the level 0 they were made from: a menu opening redraws them all)
-    static struct { uint64_t in; size_t n; uint8_t *data; } mip[4][6];
-    int mode = (g_d3_label_menu ? 1 : 0) + (g_d3_label_xbox ? 2 : 0);
+    static struct { uint64_t in; size_t n; uint8_t *data; } mip[5][6];
+    int mode = g_d3_label_kb ? 4 : (g_d3_label_menu ? 1 : 0) + (g_d3_label_xbox ? 2 : 0);
     size_t n = (size_t)row * ((h + 3) / 4);
     if (mip[mode][lv].data && mip[mode][lv].in == g_d3_in && mip[mode][lv].n == n) { memcpy(blocks, mip[mode][lv].data, n); return; }
     d3_buttons_mip_draw(blocks, lv, w, h, row);

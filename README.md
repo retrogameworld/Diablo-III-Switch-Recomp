@@ -8,8 +8,12 @@ services, the NVN graphics API, audio output, controllers, saves - are reimpleme
 **No game files are or will be included.** The game is built from the player's own legally dumped copy on their own
 machine.
 
-## What's new in v1.2.7 (2026-11-28)
-- If the game stops with its own error (such as "Out of Memory"), the log now says where it came from.
+## What's new in v1.3.1 (2026-11-28)
+- Faster on older CPUs: the game's 3D models stay on the graphics card instead of being copied there for every draw,
+  so busy towns with many characters no longer slow down on 4-core CPUs.
+- (v1.3.0) Keyboard: key-cap button icons (PC Settings > Controls > Button Icons), and in menus a second direction key
+  turns the stick slowly, so every Inventory equipment slot can be picked from the keyboard. (#20)
+- (v1.2.7) If the game stops with its own error (such as "Out of Memory"), the log now says where it came from.
 - (v1.2.6) Everything below.
 
 ### v1.2.6 (2026-11-27)
@@ -36,7 +40,9 @@ Earlier releases: see [CHANGELOG.md](CHANGELOG.md).
 - **Voice packs (optional):** your own Diablo III voice pack NSPs (free add-ons on the Switch). Put them in the `data`
   folder like the DLC: the next start unpacks their voices once, and the game can then use that voice language.
 - Windows 10/11 x64, a graphics card with Vulkan 1.3, a CPU with AVX2, and about 25 GB of free space for the setup.
-- A controller is recommended (DualSense, DualShock 4, Xbox and others); keyboard works for menus.
+- A controller is recommended (DualSense, DualShock 4, Xbox and others). The keyboard works too (WASD left stick,
+  K / J / L / I for A / B / X / Y; change them in PC Settings > Controls), with key icons in the game if you choose
+  Button icons: Keyboard.
 
 ## Setup
 1. Put your base game NSP, your 2.7.7 update NSP, your `prod.keys` and (optionally) your DLC NSPs in the `data` folder,

@@ -1160,12 +1160,12 @@ const char *renderer_stats(void) {
                  (unsigned long long)stat_counters_gpu, pace_is_slow() ? "30" : "60", (unsigned long long)pace_frames_over());
         stat_counters_gpu = 0;
         {
-            extern uint64_t prof_vc_hits, prof_vc_bypass, prof_vc_copied, prof_vc_queries, prof_vc_scan_pages, prof_vc_scan_ns;
+            extern uint64_t prof_vc_hits, prof_vc_bypass, prof_vc_copied, prof_vc_queries, prof_vc_scan_pages, prof_vc_scan_ns, prof_vc_alias_hits;
             n = strlen(stats_text);
-            snprintf(stats_text + n, sizeof stats_text - n,  " | vcache %llu hit %llu in place %.1f MB copied, %llu queries %.2f ms, %llu pages written",
-                     (unsigned long long)prof_vc_hits, (unsigned long long)prof_vc_bypass, prof_vc_copied / 1048576.0,
+            snprintf(stats_text + n, sizeof stats_text - n,  " | vcache %llu hit (%llu alias) %llu in place %.1f MB copied, %llu queries %.2f ms, %llu pages written",
+                     (unsigned long long)prof_vc_hits, (unsigned long long)prof_vc_alias_hits, (unsigned long long)prof_vc_bypass, prof_vc_copied / 1048576.0,
                      (unsigned long long)prof_vc_queries, prof_vc_scan_ns / 1e6, (unsigned long long)prof_vc_scan_pages);
-            prof_vc_hits = prof_vc_bypass = prof_vc_copied = prof_vc_queries = prof_vc_scan_pages = prof_vc_scan_ns = 0;
+            prof_vc_hits = prof_vc_bypass = prof_vc_copied = prof_vc_queries = prof_vc_scan_pages = prof_vc_scan_ns = prof_vc_alias_hits = 0;
             extern uint64_t prof_tex_watch_skips;
             n = strlen(stats_text);
             snprintf(stats_text + n, sizeof stats_text - n, " | tex unwritten %llu", (unsigned long long)prof_tex_watch_skips);
@@ -4677,13 +4677,28 @@ static void gfast_finish(VkCommandBuffer cb) {
 #define VC_PAGE 4096ull
 #define VC_TAB 8192                   // entries (open addressing)
 #define VC_MAX_RANGE (64ull << 20)    // larger bound ranges: read in place
-#define VC_BUDGET (768ull << 20)      // device-local bytes kept; the least recently used go first
-typedef struct { uint64_t lo, hi, used_seq; uint32_t gen, epoch; VkBuffer buf; VmaAllocation mem; bool gpu; } VcEnt;
+// device-local bytes kept (the least recently used go first): 768 MB, or an eighth of a smaller card's memory (Diablo
+// III's whole scene goes through the cache: cards with 2-4 GB keep less)
+#define VC_BUDGET (g_gpu_vram_mb > 0 && ((uint64_t)g_gpu_vram_mb << 17) < (768ull << 20) ? (uint64_t)g_gpu_vram_mb << 17 : (768ull << 20))
+// Diablo III's memory is not the heap: its SDK maps everything with MapPhysicalMemory, which lands in the alias region
+// (0x71_0000_0000, kernel.c), and nothing imports that for the GPU - so its vertex / index data was copied for every
+// draw (GitHub: ~24 MB a frame in a town, the vtx time ~70% of a CPU core on an i7-5775C). The cache covers the alias
+// region too: there an entry is refreshed from the CPU's copy of the written pages through the upload buffer (no
+// import to copy from on the GPU), the rest as above. The page tables span both, indexed from TRK_BASE; entries' lo
+// / hi are offsets from TRK_BASE. LARECOMP_VK_VCACHE_ALIAS=0: alias data copied per draw as before.
+#define TRK_BASE ALIAS_BASE
+#ifndef VK_TEX_WATCH_ALIAS_DEFAULT
+#define VK_TEX_WATCH_ALIAS_DEFAULT 0
+#endif
+#define TRK_HEAP (HEAP_BASE - TRK_BASE)       // the heap's offset in the tables
+#define TRK_PAGES ((HEAP_BASE + HEAP_MAX - TRK_BASE) / VC_PAGE)
+static inline bool in_alias(uint64_t addr, uint64_t size) { return addr >= ALIAS_BASE && size <= ALIAS_SIZE && addr - ALIAS_BASE <= ALIAS_SIZE - size; }
+typedef struct { uint64_t lo, hi, used_seq; uint32_t gen, epoch; VkBuffer buf; VmaAllocation mem; bool gpu, host; } VcEnt;
 static VcEnt vc_tab[VC_TAB];
 static uint32_t vc_pend[VC_TAB];  // entries the pending submission draws from (vc_flush brings them up to date)
 static int vc_npend;
-static uint32_t *vc_page_gen;  // per heap page: the generation of its last CPU write seen (vc_gen when observed)
-static uint8_t *vc_page_gpu;   // per heap page: written by the GPU
+static uint32_t *vc_page_gen;  // per page (alias region + heap): the generation of its last CPU write seen (vc_gen when observed)
+static uint8_t *vc_page_gpu;   // per page: written by the GPU (heap pages only: nothing on the GPU writes alias memory)
 static uint32_t vc_gen = 1, vc_epoch = 1;  // (epoch: bumped when pages turn GPU-written: entries check again)
 static uint64_t vc_bytes;
 #define VC_DEAD 1024
@@ -4691,7 +4706,7 @@ static struct { VkBuffer b; VmaAllocation m; uint64_t seq; } vc_dead[VC_DEAD];
 static int vc_ndead;
 static int vc_on = -1;
 // (profiler: draws served / read in place, bytes refreshed, write tracking queries, written pages seen, query time)
-uint64_t prof_vc_hits, prof_vc_bypass, prof_vc_copied, prof_vc_queries, prof_vc_scan_pages, prof_vc_scan_ns;
+uint64_t prof_vc_hits, prof_vc_bypass, prof_vc_copied, prof_vc_queries, prof_vc_scan_pages, prof_vc_scan_ns, prof_vc_alias_hits;
 
 static void vc_free_dead(bool all) {
     uint64_t done = vk_completed_seq();
@@ -4722,9 +4737,9 @@ static bool pt_init(void) {
     int n = plat_written_pages(HEAP_BASE, VC_PAGE, &one, 1, &pg);  // (is there write tracking?)
     pt_state = n >= 0 && pg == VC_PAGE;
     if (!pt_state) { LOG("[vk] no page write tracking (%d, page %llu)\n", n, (unsigned long long)pg); return false; }
-    vc_page_gen = calloc(HEAP_MAX / VC_PAGE, sizeof *vc_page_gen);
-    vc_page_gpu = calloc(HEAP_MAX / VC_PAGE, 1);
-    vc_page_gen[0] = ++vc_gen;  // (the probe took page 0's tracking)
+    vc_page_gen = calloc(TRK_PAGES, sizeof *vc_page_gen);
+    vc_page_gpu = calloc(TRK_PAGES, 1);
+    vc_page_gen[TRK_HEAP / VC_PAGE] = ++vc_gen;  // (the probe took the heap's first page's tracking)
     return true;
 }
 
@@ -4732,16 +4747,39 @@ static bool pt_init(void) {
 // 0: no CPU write since, 1: written, -1: unknown (no tracking, outside the heap, or pages the GPU writes).
 // *now: the generation to pass next time.
 // (gpu_unknown: pages the GPU writes answer -1 - the upload checks; the storage write watch asks about the CPU alone)
+// Does the OS track writes in the alias region too (Diablo III's memory)? Windows: the whole guest window has write
+// watch; Linux's soft tracking covers the heap only.
+static bool alias_tracked(void) {
+    static int on = -1;
+    if (on < 0) {
+        uint64_t pg = VC_PAGE, one;
+        on = pt_init() && plat_written_pages(ALIAS_BASE, VC_PAGE, &one, 1, &pg) >= 0 && pg == VC_PAGE;
+        if (on) vc_page_gen[0] = ++vc_gen;  // (the probe took the page's tracking)
+    }
+    return on;
+}
+// The texture upload checks over the alias region (Diablo III's textures; LARECOMP_VK_TEX_WATCH_ALIAS=0 / 1). Only
+// they: the storage write watch and the overlap stay heap-only (their ranges are the heap's, snap_storage).
+static bool tex_watch_alias(void) {
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("LARECOMP_VK_TEX_WATCH_ALIAS");
+        on = (e ? atoi(e) != 0 : VK_TEX_WATCH_ALIAS_DEFAULT) && alias_tracked();
+        LOG("[vk] texture write checks over the alias region: %s\n", on ? "on" : "off");
+    }
+    return on;
+}
 static int pages_written(uint64_t addr, uint64_t size, uint32_t since, uint32_t *now, bool gpu_unknown) {
-    if (!size || addr < HEAP_BASE || addr - HEAP_BASE + size > HEAP_MAX || !pt_init()) return -1;
-    uint64_t lo = (addr - HEAP_BASE) & ~(VC_PAGE - 1), hi = (addr - HEAP_BASE + size + VC_PAGE - 1) & ~(VC_PAGE - 1);
+    bool heap = addr >= HEAP_BASE && addr - HEAP_BASE + size <= HEAP_MAX;
+    if (!size || !(heap || (gpu_unknown && in_alias(addr, size) && tex_watch_alias())) || !pt_init()) return -1;
+    uint64_t lo = (addr - TRK_BASE) & ~(VC_PAGE - 1), hi = (addr - TRK_BASE + size + VC_PAGE - 1) & ~(VC_PAGE - 1);
     static uint64_t pages[4096];
     uint64_t pg = VC_PAGE;
-    int n = plat_written_pages(HEAP_BASE + lo, hi - lo, pages, 4096, &pg);
+    int n = plat_written_pages(TRK_BASE + lo, hi - lo, pages, 4096, &pg);
     if (n < 0) return -1;
     uint32_t g = ++vc_gen;
     if (n >= 4096) for (uint64_t p = lo / VC_PAGE; p < hi / VC_PAGE; p++) vc_page_gen[p] = g;
-    else for (int k = 0; k < n; k++) vc_page_gen[(pages[k] - HEAP_BASE) / VC_PAGE] = g;
+    else for (int k = 0; k < n; k++) vc_page_gen[(pages[k] - TRK_BASE) / VC_PAGE] = g;
     *now = g;
     int changed = 0;
     for (uint64_t p = lo / VC_PAGE; p < hi / VC_PAGE; p++) {
@@ -4757,7 +4795,7 @@ static int pages_cpu_written(uint64_t addr, uint64_t size, uint32_t since, uint3
 // looked at them). 1 yes, 0 no, -1 no tracking.
 static int pages_seen_written(uint64_t addr, uint64_t size, uint32_t since) {
     if (!size || addr < HEAP_BASE || addr - HEAP_BASE + size > HEAP_MAX || !pt_init()) return -1;
-    for (uint64_t p = (addr - HEAP_BASE) / VC_PAGE; p < (addr - HEAP_BASE + size + VC_PAGE - 1) / VC_PAGE; p++)
+    for (uint64_t p = (addr - TRK_BASE) / VC_PAGE; p < (addr - TRK_BASE + size + VC_PAGE - 1) / VC_PAGE; p++)
         if (vc_page_gen[p] > since) return 1;
     return 0;
 }
@@ -4765,7 +4803,7 @@ static int pages_seen_written(uint64_t addr, uint64_t size, uint32_t since) {
 // Heap pages [lo, hi) (offsets) written by the GPU: never cached from now on.
 static void vc_mark_gpu(uint64_t lo, uint64_t hi) {
     if (!pt_init()) return;
-    for (uint64_t p = lo / VC_PAGE; p < (hi + VC_PAGE - 1) / VC_PAGE && p < HEAP_MAX / VC_PAGE; p++) vc_page_gpu[p] = 1;
+    for (uint64_t p = lo / VC_PAGE; p < (hi + VC_PAGE - 1) / VC_PAGE && p < HEAP_MAX / VC_PAGE; p++) vc_page_gpu[TRK_HEAP / VC_PAGE + p] = 1;
     vc_epoch++;
 }
 
@@ -4792,9 +4830,10 @@ static bool vcache_lookup(uint64_t addr, uint64_t size, VkBuffer *buf, VkDeviceS
             vc_on = 0;
         }
     }
-    if (!vc_on || (!gmem_buf && !gc_lazy) || size > VC_MAX_RANGE) return false;
-    uint64_t lo = (addr - HEAP_BASE) & ~(VC_PAGE - 1), hi = (addr - HEAP_BASE + size + VC_PAGE - 1) & ~(VC_PAGE - 1);
-    if (!gmem_covers(lo, hi - lo)) return false;
+    bool host = addr < HEAP_BASE;  // (the alias region, guest_direct: refreshed from the CPU's copy)
+    if (!vc_on || (!host && !gmem_buf && !gc_lazy) || !size || size > VC_MAX_RANGE) return false;
+    uint64_t lo = (addr - TRK_BASE) & ~(VC_PAGE - 1), hi = (addr - TRK_BASE + size + VC_PAGE - 1) & ~(VC_PAGE - 1);
+    if (!host && !gmem_covers(lo - TRK_HEAP, hi - lo)) return false;
     uint64_t pend = vk_pending_seq();
     uint64_t h = (lo * 0x9E3779B97F4A7C15ull) ^ (hi * 0xC2B2AE3D27D4EB4Full);
     uint32_t slot = (uint32_t)(h ^ (h >> 32)) & (VC_TAB - 1), free_slot = ~0u, old_slot = ~0u;
@@ -4823,7 +4862,7 @@ static bool vcache_lookup(uint64_t addr, uint64_t size, VkBuffer *buf, VkDeviceS
                                  .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT};
         VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE};
         if (vmaCreateBuffer(g_vk.vma, &bi, &ai, &e->buf, &e->mem, NULL) != VK_SUCCESS) { memset(e, 0, sizeof *e); return false; }
-        e->lo = lo; e->hi = hi;
+        e->lo = lo; e->hi = hi; e->host = host;
         vc_bytes += hi - lo;
     }
     if (e->epoch != vc_epoch) {  // (pages turned GPU-written since: is this range one of them?)
@@ -4837,8 +4876,9 @@ static bool vcache_lookup(uint64_t addr, uint64_t size, VkBuffer *buf, VkDeviceS
         vc_pend[vc_npend++] = (uint32_t)(e - vc_tab);
     }
     prof_vc_hits++;
+    if (host) prof_vc_alias_hits++;
     *buf = e->buf;
-    *off = addr - HEAP_BASE - lo;
+    *off = addr - TRK_BASE - lo;
     return true;
 }
 
@@ -4862,10 +4902,10 @@ void vc_flush(void) {
         for (; j < vc_npend && vc_tab[vc_pend[j]].lo <= hi + 64 * VC_PAGE; j++)
             if (vc_tab[vc_pend[j]].hi > hi) hi = vc_tab[vc_pend[j]].hi;
         uint64_t pg = VC_PAGE;
-        int n = plat_written_pages(HEAP_BASE + lo, hi - lo, pages, 4096, &pg);
+        int n = plat_written_pages(TRK_BASE + lo, hi - lo, pages, 4096, &pg);
         prof_vc_queries++;
         if (n < 0 || n >= 4096) for (uint64_t p = lo / VC_PAGE; p < hi / VC_PAGE; p++) vc_page_gen[p] = g;  // (all)
-        else for (int k = 0; k < n; k++) vc_page_gen[(pages[k] - HEAP_BASE) / VC_PAGE] = g;
+        else for (int k = 0; k < n; k++) vc_page_gen[(pages[k] - TRK_BASE) / VC_PAGE] = g;
         if (n > 0) prof_vc_scan_pages += (uint64_t)n;
         i = j;
     }
@@ -4882,7 +4922,15 @@ void vc_flush(void) {
             if (nc == 64) { nc = 1; cp[0] = (VkBufferCopy){e->lo, 0, e->hi - e->lo}; break; }  // (scattered: the whole range)
             cp[nc++] = (VkBufferCopy){o, o - e->lo, VC_PAGE};
         }
-        if (nc) {
+        if (nc && e->host) {  // (alias region: the CPU's bytes through the upload buffer, then into the entry)
+            for (int k = 0; k < nc; k++) {
+                VkSpan s = vk_transient_copy((const void *)(uintptr_t)(TRK_BASE + cp[k].srcOffset), cp[k].size, 16);
+                VkBufferCopy c = {s.off, cp[k].dstOffset, cp[k].size};
+                rec_CmdCopyBuffer(cb, s.buf, e->buf, 1, &c);
+                prof_vc_copied += cp[k].size;
+            }
+        } else if (nc) {
+            for (int k = 0; k < nc; k++) cp[k].srcOffset -= TRK_HEAP;  // (the heap import's offsets)
             gmem_copy(cb, e->buf, cp, nc, false);
             for (int k = 0; k < nc; k++) prof_vc_copied += cp[k].size;
         }
@@ -4893,12 +4941,21 @@ void vc_flush(void) {
 
 // Vertex / index data from the imported guest heap (renderer.m bind_guest reads g_guest_buffer the same way): the
 // device-local cache above, else read in place - no per-draw copy, no index scan for the copy size. The game fences its
-// CPU writes as on the Switch. Falls back to copies outside the heap or without the import; LARECOMP_VK_COPY_VERTICES=1
-// forces copies.
+// CPU writes as on the Switch. The alias region (Diablo III's memory) goes through the cache only. Falls back to copies
+// elsewhere or without the import / write tracking; LARECOMP_VK_COPY_VERTICES=1 forces copies.
 static bool guest_direct(int kind, uint64_t addr, uint64_t size, VkBuffer *buf, VkDeviceSize *off) {  // kind: 0 vertex, 1 index (bind_note)
     static int copy = -1;
     if (copy < 0) copy = getenv("LARECOMP_VK_COPY_VERTICES") != NULL;
-    if (copy || addr < HEAP_BASE) return false;
+    if (copy) return false;
+    if (addr < HEAP_BASE) {  // (Diablo III: its memory is in the alias region - the vertex cache, refreshed from the CPU)
+        static int alias = -1;
+        if (alias < 0) {
+            const char *e = getenv("LARECOMP_VK_VCACHE_ALIAS");
+            alias = (!e || atoi(e) != 0) && alias_tracked();
+            LOG("[vk] vertex cache over the alias region (Diablo III's memory): %s\n", alias ? "on" : e && atoi(e) == 0 ? "off (LARECOMP_VK_VCACHE_ALIAS=0)" : "off (no page write tracking there)");
+        }
+        return alias && size && in_alias(addr, size) && vcache_lookup(addr, size, buf, off);
+    }
     bind_note(kind, addr, size);
     if (gc_lazy) {
         uint64_t o = addr - HEAP_BASE;
@@ -4958,7 +5015,7 @@ void vk_exec_reset(void) {
     vc_npend = 0;
     vc_free_dead(true);
     vc_bytes = 0;
-    if (vc_page_gpu) memset(vc_page_gpu, 0, HEAP_MAX / VC_PAGE);
+    if (vc_page_gpu) memset(vc_page_gpu, 0, TRK_PAGES);
     vc_epoch++;
     snap_reset();  // (overlap: the storage copies' ring follows the heap, decided again once it is set up)
     st_defaults();

@@ -29,7 +29,7 @@ enum {
 _Static_assert(BTN_DOWN == BIND_DOWN && BTN_ZL == BIND_ZL, "bindings follow the button bits");
 
 static _Atomic uint64_t key_buttons, pad_buttons;
-static _Atomic int32_t key_lx, key_ly, key_rx, key_ry, pad_lx, pad_ly, pad_rx, pad_ry;
+static _Atomic int32_t pad_lx, pad_ly, pad_rx, pad_ry;  // (the keyboard's sticks: key_sticks, read as the game polls)
 static uint8_t keys_down[SDL_SCANCODE_COUNT];
 static SDL_Gamepad *pad;
 
@@ -204,10 +204,7 @@ static void recompute_keyboard(void) {
     for (int i = 0; i < BIND_PAD_COUNT; i++)
         if (held_key(g_bind_key[i])) b |= 1ull << i;
     key_buttons = b;
-    key_lx = (held_key(g_bind_key[BIND_LS_RIGHT]) - held_key(g_bind_key[BIND_LS_LEFT])) * 32767;
-    key_ly = (held_key(g_bind_key[BIND_LS_UP]) - held_key(g_bind_key[BIND_LS_DOWN])) * 32767;
-    key_rx = (held_key(g_bind_key[BIND_RS_RIGHT]) - held_key(g_bind_key[BIND_RS_LEFT])) * 32767;
-    key_ry = (held_key(g_bind_key[BIND_RS_UP]) - held_key(g_bind_key[BIND_RS_DOWN])) * 32767;
+
 }
 
 // Diablo III's shoulders differ by screen, as on PS4: in play L1 = potion (the Switch's R), L2 = target lock (L),
@@ -461,6 +458,39 @@ int d3_prompts_xbox(void) {
     }
 }
 
+// (Diablo III, GitHub #20) "Button icons" = Keyboard, or Auto while the keyboard is being played with: the prompts show
+// the keys bound to each button, as key caps (nvn/texpatch.c). Auto takes the keyboard on a press of a bound key and
+// gives it back to the controller on a button press or a stick pushed well over; with no controller at all, the keys.
+static _Atomic int kb_in_use;
+int d3_prompts_keyboard(void) {
+    if (g_settings.prompts == PROMPTS_KEYBOARD) return 1;
+    if (g_settings.prompts != PROMPTS_AUTO) return 0;
+    return kb_in_use || (!pad && !getenv("LARECOMP_PAD_TYPE"));
+}
+static void note_key_used(int sc) {
+    for (int i = 0; i < BIND_KEY_COUNT; i++)
+        if (g_bind_key[i] == sc) {
+            if (!kb_in_use) LOG("[input] button prompts: keyboard\n");
+            kb_in_use = 1;
+            return;
+        }
+}
+static void note_pad_used(void) {
+    if (kb_in_use) LOG("[input] button prompts: controller again\n");
+    kb_in_use = 0;
+}
+// The prompt atlas's look apart from the play / menus shoulder names (vulkan/textures.c draws it again when it
+// changes): 0 / 2 PlayStation / Xbox, 4 the game's own (Nintendo), keyboard 8 + the keys bound to the buttons it shows
+int d3_prompt_look(void) {
+    if (d3_prompts_nintendo()) return 4;
+    if (!d3_prompts_keyboard()) return 2 * d3_prompts_xbox();
+    static const int shown[] = {BIND_A, BIND_B, BIND_X, BIND_Y, BIND_L, BIND_R, BIND_ZL, BIND_ZR,
+                                BIND_LEFT, BIND_UP, BIND_RIGHT, BIND_DOWN};
+    uint32_t h = 2166136261u;
+    for (unsigned i = 0; i < sizeof shown / sizeof *shown; i++) h = (h ^ (uint16_t)g_bind_key[shown[i]]) * 16777619u;
+    return 8 | (int)((h ^ h >> 16) & 0xffff) << 4;
+}
+
 int input_menu_family(SDL_JoystickID which) {
     switch (g_settings.prompts) {
     case PROMPTS_NINTENDO: return 0;
@@ -563,6 +593,7 @@ void input_handle_event(const SDL_Event *e) {
     case SDL_EVENT_KEY_DOWN: case SDL_EVENT_KEY_UP: {
         if (e->type == SDL_EVENT_KEY_DOWN && e->key.scancode == SDL_SCANCODE_F9 && !e->key.repeat) g_debug_frame_request = 1;
         if (e->key.scancode < SDL_SCANCODE_COUNT) keys_down[e->key.scancode] = e->type == SDL_EVENT_KEY_DOWN;
+        if (e->type == SDL_EVENT_KEY_DOWN && !e->key.repeat) note_key_used(e->key.scancode);
         uint64_t before = key_buttons;
         recompute_keyboard();
         uint64_t now = key_buttons;
@@ -597,6 +628,7 @@ void input_handle_event(const SDL_Event *e) {
         if (game_is_d3() && coop_slot_of(e->gbutton.which)) { coop_recompute(coop_slot_of(e->gbutton.which)); break; }
         if (e->gbutton.down && e->gbutton.which != TEST_DEVICE && !host_test) use_pad(e->gbutton.which, " (switched)");
         if (pad && e->gbutton.which != TEST_DEVICE && e->gbutton.which != SDL_GetGamepadID(pad)) break;  // (another pad)
+        if (e->gbutton.down) note_pad_used();
         if (!host_test || e->gbutton.which == TEST_DEVICE) {  // (the press as the event has it, before reading the pad)
             uint64_t b = pad_bits(e->gbutton.button);
             note_press(e->gbutton.down ? b : 0, e->gbutton.down ? 0 : b);
@@ -607,6 +639,7 @@ void input_handle_event(const SDL_Event *e) {
         if (game_is_d3() && coop_slot_of(e->gaxis.which)) { coop_recompute(coop_slot_of(e->gaxis.which)); break; }
         if (!host_test && abs(e->gaxis.value) > 24000 && pad_at_rest()) use_pad(e->gaxis.which, " (switched)");
         if (pad && e->gaxis.which != SDL_GetGamepadID(pad)) break;  // (another pad's stick: not the game's)
+        if (abs(e->gaxis.value) > 24000 && !host_test) note_pad_used();
         if ((e->gaxis.axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER || e->gaxis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) &&
             !host_test) {  // (the triggers as buttons: past half way)
             static bool trig[2];
@@ -891,6 +924,56 @@ uint64_t input_buttons_now(void) { return (menu_input_captured() ? 0 : key_butto
 
 static int32_t clamp_axis(int32_t v) { return v > 32767 ? 32767 : v < -32767 ? -32767 : v; }
 
+// The keyboard's sticks in Diablo III's menus (GitHub #20: "the slots for equipment and skills"). The inventory's
+// equipment slots sit in a ring around the hero, picked by the stick's angle (as are the skill choices and the map's
+// waypoints); four keys give eight angles only, so some slots could not be reached from the keyboard. While one of
+// the game's menus is open, a key pressed while the stick already points somewhere turns it toward the new direction
+// at a steady speed instead of jumping there, and letting go of a key stops the turn where it is: hold S, add D, and
+// let go of D when the slot lights up. The first key still points at once, and in play the keys work as before.
+// (The idea of a key stick that turns rather than jumps is yuzu's; none of its code is used.)
+// D3_KEY_STICK_TURN=<degrees a second> (0: off; default 60: at 100 the boots slot, a narrow one between the bag and
+// the legs, was lit for a tenth of a second only - hidden test 2026-11-28).
+typedef struct { bool on, turning; float ang; int keys; uint64_t t; } KeyStick;
+static void key_stick(KeyStick *k, int keys, bool smooth, float speed, int32_t *ox, int32_t *oy) {
+    int dx = (keys >> 3 & 1) - (keys >> 2 & 1), dy = (keys & 1) - (keys >> 1 & 1);  // (keys: up, down, left, right)
+    uint64_t now = SDL_GetTicksNS();
+    float dt = k->on ? (float)((now - k->t) / 1e9) : 0;
+    k->t = now;
+    if (!keys) { k->on = false, k->keys = 0, *ox = *oy = 0; return; }
+    if (!smooth || !k->on) {
+        k->keys = keys;
+        if (!dx && !dy) { k->on = false, *ox = *oy = 0; return; }  // (opposite keys only)
+        k->on = true, k->turning = false, k->ang = atan2f((float)dy, (float)dx);
+        if (!smooth) { *ox = dx * 32767, *oy = dy * 32767; return; }  // (exactly as before: diagonals at full tilt)
+    } else {
+        if (keys & ~k->keys) k->turning = true;        // a key added: turn toward the new direction
+        else if (k->keys & ~keys) k->turning = false;  // a key let go: stay where it points now
+        k->keys = keys;
+        if (k->turning && (dx || dy)) {
+            float d = atan2f((float)dy, (float)dx) - k->ang, step = speed * (dt > 0.1f ? 0.1f : dt);
+            while (d > 3.14159265f) d -= 6.28318531f;
+            while (d < -3.14159265f) d += 6.28318531f;
+            k->ang += fabsf(d) <= step ? d : d > 0 ? step : -step;
+        }
+    }
+    *ox = (int32_t)lroundf(cosf(k->ang) * 32767), *oy = (int32_t)lroundf(sinf(k->ang) * 32767);
+}
+static void key_sticks(int32_t *lx, int32_t *ly, int32_t *rx, int32_t *ry) {
+    static KeyStick ks[2];
+    static float speed = -1;
+    if (speed < 0) {
+        const char *e = getenv("D3_KEY_STICK_TURN");
+        speed = (e ? (float)atof(e) : 60.0f) * 3.14159265f / 180;
+    }
+    bool smooth = game_is_d3() && speed > 0 && d3_menu_open();
+    int l = held_key(g_bind_key[BIND_LS_UP]) | held_key(g_bind_key[BIND_LS_DOWN]) << 1 |
+            held_key(g_bind_key[BIND_LS_LEFT]) << 2 | held_key(g_bind_key[BIND_LS_RIGHT]) << 3;
+    int r = held_key(g_bind_key[BIND_RS_UP]) | held_key(g_bind_key[BIND_RS_DOWN]) << 1 |
+            held_key(g_bind_key[BIND_RS_LEFT]) << 2 | held_key(g_bind_key[BIND_RS_RIGHT]) << 3;
+    key_stick(&ks[0], l, smooth, speed, lx, ly);
+    key_stick(&ks[1], r, smooth, speed, rx, ry);
+}
+
 // NpadFullKeyState / NpadHandheldState / NpadJoy*State share this layout (0x28 bytes):
 // {int64 sampling, u64 buttons, AnalogStick L {x,y}, AnalogStick R {x,y}, u32 attributes}
 static void fill_state(Cpu *c) {
@@ -981,8 +1064,10 @@ d3_skip_ticks:;
         if (g_inject_plus > 0) { until = renderer_present_count() + 10; g_inject_plus = 0; }
         if (renderer_present_count() < until) b |= 1ull << BTN_PLUS;
     }
-    int32_t lx = clamp_axis((menu ? 0 : key_lx + pad_lx) + script_lx), ly = clamp_axis((menu ? 0 : key_ly + pad_ly) + script_ly);
-    int32_t rx = clamp_axis((menu ? 0 : key_rx + pad_rx) + script_rx), ry = clamp_axis((menu ? 0 : key_ry + pad_ry) + script_ry);
+    int32_t klx, kly, krx, kry;
+    key_sticks(&klx, &kly, &krx, &kry);
+    int32_t lx = clamp_axis((menu ? 0 : klx + pad_lx) + script_lx), ly = clamp_axis((menu ? 0 : kly + pad_ly) + script_ly);
+    int32_t rx = clamp_axis((menu ? 0 : krx + pad_rx) + script_rx), ry = clamp_axis((menu ? 0 : kry + pad_ry) + script_ry);
     extern bool mirror_input(void);  // mirror mode, the world on screen (runtime/hle/mirror.c): left and right swap
     bool mirrored = !menu && mirror_input();
     if (mirrored) {

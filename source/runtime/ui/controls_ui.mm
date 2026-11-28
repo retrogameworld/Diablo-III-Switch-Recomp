@@ -16,6 +16,7 @@ extern "C" {
 #include "../input_bind.h"
 #include "../settings.h"
 int input_pad_family(void);              // runtime/hle/input.c
+int d3_prompts_keyboard(void);           // runtime/hle/input.c: Diablo III's prompts show the keys
 bool game_is_d3(void);                  // runtime/game_addresses.c
 SDL_JoystickID input_active_pad(void);   // runtime/hle/input.c: the controller the game reads (0: none yet)
 void input_apply_background(void);
@@ -289,10 +290,15 @@ extern "C" void controls_tab_draw(float scale) {
     {
         static const char *const fam[] = {"Nintendo", "Xbox", "PlayStation"};
         char autol[64];
-        snprintf(autol, sizeof autol, "Auto (%s)", fam[input_pad_family() % 3]);
-        const char *names[] = {autol, "Nintendo", "Xbox", "PlayStation"};
-        opt_choice("Button icons", &g_settings.prompts, names, 4, PROMPTS_AUTO,
-                   "The button icons the game shows. Auto: the connected controller's.");
+        // (Diablo III: Keyboard = the keys bound to each button, drawn as key caps; Auto shows them while the keyboard
+        // is the one being played with - GitHub #20)
+        bool kb = game_is_d3() && g_settings.prompts == PROMPTS_AUTO && d3_prompts_keyboard();
+        snprintf(autol, sizeof autol, "Auto (%s)", kb ? "Keyboard" : fam[input_pad_family() % 3]);
+        const char *names[] = {autol, "Nintendo", "Xbox", "PlayStation", "Keyboard"};
+        opt_choice("Button icons", &g_settings.prompts, names, game_is_d3() ? 5 : 4, PROMPTS_AUTO,
+                   game_is_d3() ? "The button icons the game shows. Auto: the controller's, or the keys while you play "
+                                  "with the keyboard."
+                                : "The button icons the game shows. Auto: the connected controller's.");
     }
     {
         static const char *const names[] = {"Game layout", "Controller convention"};
