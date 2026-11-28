@@ -29,6 +29,8 @@ Settings g_settings = {
     .music_volume = 1.0f,
     .d3_move = 100,
     .d3_atk = 100,
+    .d3_xp = 1,
+    .d3_gold = 1,
     .effects_volume = 1.0f,
     .reverb = true,
     .movie_audio = true,
@@ -52,6 +54,7 @@ Settings g_settings = {
     .upscaler_auto = true,
     .res_auto = true,
     .livesplit_host = "localhost:16834",
+    .key_stick_smooth = true,  // (GitHub #20: the player asked for it, as yuzu's "Emulate analog with keyboard input")
 #ifndef __APPLE__
     .bg_input = true,  // (as before the setting; on macOS it needs Input Monitoring permission, so Off there)
 #endif
@@ -196,6 +199,9 @@ void settings_load(void) {
         else if (!strcmp(key, "d3_loot")) g_settings.d3_loot = atoi(val);
         else if (!strcmp(key, "d3_move")) g_settings.d3_move = atoi(val);
         else if (!strcmp(key, "d3_atk")) g_settings.d3_atk = atoi(val);
+        else if (!strcmp(key, "d3_xp")) g_settings.d3_xp = atoi(val);
+        else if (!strcmp(key, "d3_gold")) g_settings.d3_gold = atoi(val);
+        else if (!strcmp(key, "d3_stash")) g_settings.d3_stash = atoi(val);
         else if (!strcmp(key, "reverb")) g_settings.reverb = atoi(val) != 0;
         else if (!strcmp(key, "movie_audio")) g_settings.movie_audio = atoi(val) != 0;
         else if (!strcmp(key, "sound_mono")) g_settings.sound_mono = atoi(val) != 0;
@@ -222,6 +228,7 @@ void settings_load(void) {
         else if (!strcmp(key, "antialias")) g_settings.antialias = !strcmp(val, "off") ? AA_OFF : AA_SMAA;  // ("fxaa": SMAA now)
         else if (!strcmp(key, "inv_keys")) g_settings.inv_keys = atoi(val) != 0;
         else if (!strcmp(key, "dpad_move")) g_settings.dpad_move = atoi(val) != 0;
+        else if (!strcmp(key, "key_stick_smooth")) g_settings.key_stick_smooth = atoi(val) != 0;
         else if (!strcmp(key, "rumble")) g_settings.rumble = atoi(val) != 0;
         else if (!strcmp(key, "rumble_strength")) g_settings.rumble_strength = atoi(val);
         else if (!strcmp(key, "controller_light")) g_settings.controller_light = atoi(val) != 0;
@@ -321,6 +328,7 @@ void settings_save(void) {
     fprintf(f, "resolution = %s\n", g_settings.res_auto ? "auto" : res_name(g_settings.res_mode));
     fprintf(f, "inv_keys = %d\n", g_settings.inv_keys);
     fprintf(f, "dpad_move = %d\n", g_settings.dpad_move);
+    fprintf(f, "key_stick_smooth = %d\n", g_settings.key_stick_smooth);
     fprintf(f, "rumble = %d\n", g_settings.rumble);
     fprintf(f, "rumble_strength = %d\n", g_settings.rumble_strength);
     fprintf(f, "controller_light = %d\n", g_settings.controller_light);

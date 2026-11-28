@@ -101,10 +101,10 @@ extern "C" void menu_request_open(void) { g_open_request.store(true); }
 // restart"). The settings the game reads only as it starts (the Mods tab: season, buffs, cheats, speeds, legendary drops;
 // the game's own blur filter): closing the menu with one of them changed from what the game started with asks Restart
 // Now (the game quits and a new copy starts: runtime/main.c rt_quit_exit) or Later (asked again only after another change).
-struct RestartSet { long long v[7]; };
+struct RestartSet { long long v[10]; };
 static RestartSet restart_set_now(void) {
     return {{g_settings.d3_season, g_settings.d3_buffs, g_settings.d3_cheats, g_settings.d3_loot, g_settings.d3_move,
-             g_settings.d3_atk, g_settings.game_fxaa}};
+             g_settings.d3_atk, g_settings.game_fxaa, g_settings.d3_xp, g_settings.d3_gold, g_settings.d3_stash}};
 }
 static bool restart_same(const RestartSet &a, const RestartSet &b) { return !memcmp(a.v, b.v, sizeof a.v); }
 static RestartSet g_restart_started, g_restart_asked;  // (as the game started; as last answered with Later)
@@ -992,6 +992,39 @@ static void tab_mods(void) {
         g_settings.d3_move = speed_pct[mi];
     if (opt_choice("Attack Speed", &ai, speeds, 7, 0, "How fast heroes attack. 100% is the game's own. Applies after a restart."))
         g_settings.d3_atk = speed_pct[ai];
+    {   // (GitHub #22) experience / gold multipliers and the stash size
+        static char mnames[D3_MULT_COUNT][16];
+        static const char *mults[D3_MULT_COUNT];
+        if (!mults[0])
+            for (int i = 0; i < D3_MULT_COUNT; i++)
+                snprintf(mnames[i], sizeof mnames[i], i ? "x%d" : "Normal", d3_mult_values[i]), mults[i] = mnames[i];
+        int xi = 0, gi = 0;
+        for (int i = 0; i < D3_MULT_COUNT; i++) {
+            if (g_settings.d3_xp == d3_mult_values[i]) xi = i;
+            if (g_settings.d3_gold == d3_mult_values[i]) gi = i;
+        }
+        if (opt_choice("Experience Multiplier", &xi, mults, D3_MULT_COUNT, 0,
+                       "Experience from kills, quests and bounties, multiplied. Applies after a restart."))
+            g_settings.d3_xp = d3_mult_values[xi];
+        if (opt_choice("Gold Multiplier", &gi, mults, D3_MULT_COUNT, 0,
+                       "Gold you pick up, multiplied (not what vendors pay). Applies after a restart."))
+            g_settings.d3_gold = d3_mult_values[gi];
+        static char snames[D3_STASH_COUNT][24];
+        static const char *sizes[D3_STASH_COUNT];
+        if (!sizes[0])
+            for (int i = 0; i < D3_STASH_COUNT; i++) {
+                if (i) snprintf(snames[i], sizeof snames[i], "+%d (%d slots)", 20 * i, d3_stash_choice(i));
+                else snprintf(snames[i], sizeof snames[i], "Normal");
+                sizes[i] = snames[i];
+            }
+        int ti = 0;
+        for (int i = 1; i < D3_STASH_COUNT; i++)
+            if (g_settings.d3_stash == d3_stash_choice(i)) ti = i;
+        if (opt_choice("Bigger Stash", &ti, sizes, D3_STASH_COUNT, 0,
+                       "The stash grows to this size when you enter a game, without buying it. It never shrinks: the "
+                       "space stays on your account after this is set back to Normal. Applies after a restart."))
+            g_settings.d3_stash = d3_stash_choice(ti);
+    }
     static const char *loot[D3L_COUNT] = {"Normal", "Always Ancient", "Always Primal", "No Primal", "No Ancient"};
     int li = g_settings.d3_loot >= 0 && g_settings.d3_loot < D3L_COUNT ? g_settings.d3_loot : 0;
     if (opt_choice("Legendary Drops", &li, loot, D3L_COUNT, 0,

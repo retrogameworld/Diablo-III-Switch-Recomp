@@ -270,6 +270,9 @@ extern "C" void controls_tab_draw(float scale) {
         opt_toggle("D-pad moves the hero", &g_settings.dpad_move, false, "The d-pad moves your hero like the control stick.");
     else
     opt_toggle("D-pad moves Link", &g_settings.dpad_move, false, "The d-pad moves Link like the control stick.");
+    if (game_is_d3())  // (GitHub #20: as yuzu's "Emulate analog with keyboard input")
+    opt_toggle("Smooth keyboard stick", &g_settings.key_stick_smooth, true,
+               "The stick keys turn the stick smoothly instead of jumping. In menus it turns slower, to pick any slot.");
     if (!game_is_d3())  // (Link's Awakening's movement only: Diablo III's hero already walks any direction)
     opt_toggle("360-degree movement", &g_settings.move_360, false,
                "Link walks in the exact direction of the stick instead of snapping to 8 directions.");

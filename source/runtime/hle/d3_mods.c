@@ -112,6 +112,11 @@ static const struct { const char *label, *desc; } k_cheats[D3_CHEAT_COUNT] = {
                             "Pick up your loot first."},
     {"Unlock All Cosmetics", "Every wing, pet, pennant and portrait frame is learned when you enter a game. They stay "
                              "learned on your account, also after this is turned off."},
+    {"Unlimited Challenge Rift Rewards", "Every Challenge Rift you beat in time earns its reward cache, not only the "
+                                         "first one each week. Needs Challenge Rift Offline."},
+    {"Keep Heroes Across Seasons", "Seasonal heroes of an earlier season play on as seasonal heroes of the Offline "
+                                   "Season chosen above (Play Hero, the seasonal stash) instead of being offered Rebirth. "
+                                   "They keep their old season: with this off they are offered Rebirth again."},
 };
 const char *d3_cheat_info(int i, const char **desc) {
     if (i < 0 || i >= D3_CHEAT_COUNT) return "";
@@ -133,12 +138,17 @@ static const struct { uint32_t off, word, cheat; } k_sites[] = {
     {0x88f92c, 0xd503201f, D3C_LEGCHANCE}, {0x88f934, 0xd503201f, D3C_LEGCHANCE}, {0x88f93c, 0x14000063, D3C_LEGCHANCE},
     {0x88fac4, 0xd503201f, D3C_LEGCHANCE}, {0x88fae0, 0x140000d4, D3C_LEGCHANCE},
     {0x4fa01c, 0x528000b9, D3C_ANYGEM}, {0x4fa024, 0x14000028, D3C_ANYGEM}, {0x4f99dc, 0xd503201f, D3C_AUTOPICKUP}, {0x4f99ec, 0x14000006, D3C_AUTOPICKUP},
+    {0x04ee18, 0x14000001, D3C_CRFARM}, {0x04ef28, 0x17ffffbd, D3C_CRFARM},
+    {0x1bd07c, 1, D3C_KEEPSEASON}, {0x358a88, 1, D3C_KEEPSEASON},
 };
+// (GitHub #22) Experience / Gold multipliers and the stash size: the Mods tab's choices
+const int d3_mult_values[D3_MULT_COUNT] = {1, 2, 3, 5, 10, 25, 50, 100, 500, 1000, 5000, 10000};
+int d3_stash_choice(int i) { return i > 0 && i < D3_STASH_COUNT ? D3_STASH_BASE + 20 * i : 0; }
 enum { NSITES = sizeof k_sites / sizeof *k_sites };
 
 // the settings as read at start (changes apply after a restart: the game builds its season state once)
 static _Atomic int g_init;
-static int g_season, g_loot, g_cr;
+static int g_season, g_loot, g_cr, g_xp = 1, g_gold = 1, g_stash;
 static uint32_t g_buffs, g_cheats;
 static float g_move = 1, g_atk = 1;
 static struct { uint64_t addr; uint32_t word; } g_words[NSITES];
@@ -160,13 +170,18 @@ static void init(void) {
         g_loot = g_settings.d3_loot > 0 && g_settings.d3_loot < D3L_COUNT ? g_settings.d3_loot : 0;
         if (g_settings.d3_move >= 10 && g_settings.d3_move <= 1000) g_move = g_settings.d3_move / 100.0f;
         if (g_settings.d3_atk >= 10 && g_settings.d3_atk <= 1000) g_atk = g_settings.d3_atk / 100.0f;
+        if (g_settings.d3_xp > 1 && g_settings.d3_xp <= 10000) g_xp = g_settings.d3_xp;
+        if (g_settings.d3_gold > 1 && g_settings.d3_gold <= 10000) g_gold = g_settings.d3_gold;
+        if (g_settings.d3_stash > 0 && g_settings.d3_stash <= D3_STASH_MAX) g_stash = g_settings.d3_stash;
+        if (!(g_cheats & D3C_CHALLENGE)) g_cheats &= ~D3C_CRFARM;
+        if (!g_season) g_cheats &= ~D3C_KEEPSEASON;
         for (int i = 0; i < NSITES; i++)
             if (g_cheats & k_sites[i].cheat) g_words[g_nwords].addr = MAIN + k_sites[i].off, g_words[g_nwords++].word = k_sites[i].word;
         if (g_cheats & D3C_CHALLENGE) cr_load();
-        if (g_season || g_buffs || g_cheats || g_loot || g_move != 1 || g_atk != 1)
+        if (g_season || g_buffs || g_cheats || g_loot || g_move != 1 || g_atk != 1 || g_xp != 1 || g_gold != 1 || g_stash)
             LOG("[d3mods] season %d, buffs %#x, cheats %#x (%d code sites), legendary drops %d, speed x%.2f, attack x%.2f, "
-                "Challenge Rift %s (GPL-2.0 code from d3hack / Diablo III Mobile)\n", g_season, g_buffs, g_cheats, g_nwords,
-                g_loot, g_move, g_atk, g_cr ? "on" : "off");
+                "experience x%d, gold x%d, stash %d, Challenge Rift %s (GPL-2.0 code from d3hack / Diablo III Mobile)\n",
+                g_season, g_buffs, g_cheats, g_nwords, g_loot, g_move, g_atk, g_xp, g_gold, g_stash, g_cr ? "on" : "off");
     }
     atomic_store_explicit(&g_init, 1, memory_order_release);
 }
@@ -199,11 +214,12 @@ enum { F_MOVESPEED = 0x0c8000, F_ATKSPEED = 0x6cc700, F_INSLOT = 0x489280, F_ANC
        F_ACTORGET = 0x86e070, F_ACTORFLAG = 0x86f940, F_ATTRSETI = 0x46fc00, F_ATTRSETF = 0x46fb80,
        O_APPGLOBALS = 0x1905610, GOT_APPGLOBALS = 0x114a840,
        F_PUBFILE = 0x066b10, F_PUBFILE_DONE = 0x070850, F_CR_DATA = 0x185f70, F_CR_FAILED = 0x185aa0, F_CR_SAVE = 0x04edc0,
-       F_CR_GRANT = 0x7764e0, F_SEASON_NUM = 0x72e090, F_IS_SEASONAL = 0x4c8df0 };
+       F_CR_GRANT = 0x7764e0, F_SEASON_NUM = 0x72e090, F_IS_SEASONAL = 0x4c8df0,
+       F_XP_ADD = 0x79ff40, F_CURRENCY = 0x47ffb0, F_CR_HANDLE = 0x775cd0, F_ATTRGETI = 0x46fb20 };
 // attribute ids (d3hack attributes.hpp, checked for 2.7.7 by Diablo III Mobile)
 enum { A_INVULNERABLE = 0x69, A_APS_TOTAL = 0xc9, A_IMMUNE_KNOCKBACK = 0x12d, A_STUN_IMMUNE = 0x134, A_FREEZE_IMMUNE = 0x13a,
        A_SLOWDOWN_IMMUNE = 0x14b, A_GETHIT_IMMUNE = 0x14c, A_FEAR_IMMUNE = 0x231, A_IMMUNE_CHARM = 0x2c7, A_IMMUNE_BLIND = 0x2c8,
-       A_GOD = 0x44d, A_ITEMS_INDESTRUCTIBLE = 0x4c0, A_RECEIVED_SEASONAL_LEGENDARY = 0x519 };
+       A_GOD = 0x44d, A_ITEMS_INDESTRUCTIBLE = 0x4c0, A_RECEIVED_SEASONAL_LEGENDARY = 0x519, A_SHARED_STASH_SLOTS = 0x9 };
 // LootSpecifier as LootRollForAncientLegendary reads it (Diablo III Mobile: d3hack's struct is 4 bytes off here)
 enum { LS_CRAFTER_CHANCE = 0x64, LS_NO_ANCIENT = 0x68, LS_NO_PRIMAL = 0x6c, LS_ANCIENT_RANK = 0xd8 };
 
@@ -262,6 +278,23 @@ static void unlock_cosmetics(Cpu *c, uint32_t acd_id) {
         learned[1], learned[2], learned[3], learned[4]);
 }
 static int cr_hook(Cpu *c, uint64_t addr);
+enum { PL_LAST_CR_REWARD = 0x98 };  // (Player: the challenge number of the last Challenge Rift reward)
+// (GitHub #22) the stash's size: the hero's SHARED_STASH_SLOTS attribute (the account's stash; the game's own Expand
+// Stash at the stash, main+0x499490, adds 20 a time up to 350 for gold). Raised to the chosen size when a world is set up;
+// never lowered (items could sit in the slots past a smaller size), so it stays when the cheat is turned off
+static void stash_grow(Cpu *c) {
+    uint64_t pl = gcall3(c, F_PLFIRST, 0, 0, 0);
+    for (int n = 0; pl && n < 16; n++, pl = gcall3(c, F_PLNEXT, pl, 0, 0)) {
+        int32_t id = (int32_t)LD32(pl + 4);
+        if (id == -1) continue;
+        uint64_t acd = gcall3(c, F_ACDGET, (uint32_t)id, 0, 0);
+        if (!acd) continue;
+        int32_t had = (int32_t)gcall3(c, F_ATTRGETI, acd, A_SHARED_STASH_SLOTS | 0xfffff000u, 0);
+        if (had >= g_stash) continue;
+        gcall3(c, F_ATTRSETI, acd, A_SHARED_STASH_SLOTS | 0xfffff000u, (uint32_t)g_stash);
+        LOG("[d3mods] stash: %d -> %d slots\n", had, (int32_t)gcall3(c, F_ATTRGETI, acd, A_SHARED_STASH_SLOTS | 0xfffff000u, 0));
+    }
+}
 enum { F_CLOSING = 0x8db530, F_WAIT = 0x8a4740 };  // the scripts' DungeonFinderClosingTriggered / Wait (rift_close)
 // an item's flavor text (main+0x505d60: CRefString ItemFlavorText(GBID), the result through x8 - {buffer, chars});
 // CRefString::Set(const char *) main+0xa492d0
@@ -315,11 +348,12 @@ int d3_mods_fn(Cpu *c, uint64_t addr) {
     }
     case MAIN + F_INITWORLD:  // d3hack sInitializeWorld hook: after the world is set up, on the local server
         if (getenv("D3_TEST_RIFT_CLOSE")) g_test_thread = kernel_current_thread_id();  // (the server side: rift_close_test)
-        if (!(g_cheats & (D3C_GOD | D3C_DBGFLAGS | D3C_COSMETICS))) return 0;
+        if (!(g_cheats & (D3C_GOD | D3C_DBGFLAGS | D3C_COSMETICS)) && !g_stash) return 0;
         call_orig(c, addr);
         if (gcall3(c, F_SRVLOCAL, 0, 0, 0) & 1 && !(gcall3(c, F_STARTUP, 0, 0, 0) & 1)) {
             if (g_cheats & D3C_DBGFLAGS) flags_are_fun();
             if (g_cheats & D3C_GOD) enable_god(c);
+            if (g_stash) stash_grow(c);
             if (g_cheats & D3C_COSMETICS) {  // (each player's hero once a session: the first world it is in)
                 static uint32_t done[16];
                 static int ndone;
@@ -335,7 +369,10 @@ int d3_mods_fn(Cpu *c, uint64_t addr) {
                 }
             }
             static int n;
-            if (n++ < 4) LOG("[d3mods] world set up:%s%s\n", g_cheats & D3C_GOD ? " god mode" : "", g_cheats & D3C_DBGFLAGS ? " debug flags" : "");
+            if (n++ < 4)
+                LOG("[d3mods] world set up:%s%s (%s game)\n", g_cheats & D3C_GOD ? " god mode" : "",
+                    g_cheats & D3C_DBGFLAGS ? " debug flags" : "",
+                    gcall3(c, F_IS_SEASONAL, 0, 0, 0) & 1 ? "seasonal" : "non-seasonal");
         }
         return 1;
     case 0x7000056b10ull:  // IsSignedInOnline -> 1 (hero create refuses a seasonal hero offline otherwise)
@@ -373,6 +410,36 @@ int d3_mods_fn(Cpu *c, uint64_t addr) {
         return 1;
     case MAIN + F_CLOSING: case MAIN + F_WAIT:
         return rift_close(c, addr);
+    case MAIN + F_XP_ADD: {  // (GitHub #22) ExperienceAdd(ACD *, uint64 amount, ?, BOOL first): what a hero earns, before the
+        // level-ups it pays for. The game calls it with first = 1 for the experience itself (kills, quests, bounties; each
+        // party member's share once) and again with 0 for the rested bonus it works out from that amount: only the first
+        // is multiplied
+        if (g_xp == 1 || (uint32_t)c->x[3] != 1) return 0;
+        uint64_t v = c->x[1], m = v > UINT64_MAX / 2 / (uint64_t)g_xp ? UINT64_MAX / 2 : v * (uint64_t)g_xp;
+        if (getenv("D3_MODS_LOG")) { static int n; if (n++ < 20) LOG("[d3mods] experience %llu -> x%d\n", (unsigned long long)v, g_xp); }
+        c->x[1] = m;
+        return 0;
+    }
+    case MAIN + F_CURRENCY: {  // (GitHub #22) ActorCommonData::ModifyCurrencyAmount(ACD *, int64 amount, CurrencyType,
+        // GoldModifiedReason, BOOL no sound): gold (type 0) gained by picking it up (reason 0) - not what vendors pay,
+        // quest rewards or anything taken away
+        if (g_gold == 1) return 0;
+        int64_t v = (int64_t)c->x[1];
+        uint32_t type = (uint32_t)c->x[2], why = (uint32_t)c->x[3];
+        if (getenv("D3_MODS_LOG")) { static int n; if (n++ < 40) LOG("[d3mods] currency %lld type %u reason %u\n", (long long)v, type, why); }
+        if (v <= 0 || type != 0 || why != 0) return 0;
+        c->x[1] = (uint64_t)(v > INT64_MAX / 4 / g_gold ? INT64_MAX / 4 : v * g_gold);
+        return 0;
+    }
+    case MAIN + F_CR_HANDLE:  // (GitHub #22, d3hack ChallengeRiftHandleChallengeRewardsHook) the end of a Challenge Rift
+        // (Player *, time, screen info): the player's last rewarded challenge (Player +0x98) decides "already earned this
+        // week"; with Unlimited Challenge Rift Rewards it is cleared first, and the profile's own once-per-challenge check
+        // in ChallengeRiftRewardEarned_SaveToProfile is skipped (k_sites 0x4ee18 / 0x4ef28, d3hack's save-gate bypass)
+        if (!cheat(D3C_CRFARM) || !c->x[0]) return 0;
+        LOG("[d3mods] challenge rift done (%u ms): the last rewarded challenge %u cleared (Unlimited Challenge Rift Rewards)\n",
+            (uint32_t)c->x[1], LD32(c->x[0] + PL_LAST_CR_REWARD));
+        ST32(c->x[0] + PL_LAST_CR_REWARD, 0);
+        return 0;
     case MAIN + F_GAME_ERROR: {  // void ErrorReport(ErrorCode, const char *msg): what stopped the game, for its log
         // (GitHub: a rare crash entering a rift was the game's own "Out of Memory Error", code 0x82, with nothing
         // in the log about where: the message, the caller chain and how much memory the game had mapped)

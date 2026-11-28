@@ -39,6 +39,9 @@ MOD_ENTRIES = [
     0x8a4740,  # the scripts' Wait(seconds) (no rift close timer: the wait right after it)
     0x505d60,  # an item's flavor text (a cosmetic without an icon: "only in the PC version", d3_icon_placeholder)
     0xa2ad70,  # the game's error report (code, message): logged with a guest backtrace before it stops the game
+    0x79ff40,  # ExperienceAdd (experience multiplier, GitHub #22)
+    0x47ffb0,  # ActorCommonData::ModifyCurrencyAmount (gold multiplier, GitHub #22)
+    0x775cd0,  # ChallengeRiftHandleChallengeRewards (unlimited Challenge Rift rewards, GitHub #22)
 ]
 # Instruction variants, switched at run time (d3_mods_word: 0 = the game's own instruction): main offset ->
 # (the original word, checked by gen.py; [the variant word]) or [(a number, C written by hand)]. d3_mods.c k_sites has
@@ -77,6 +80,14 @@ MOD_VARIANTS = {
     0x4fa024: (0x7100091f, [0x14000028]),   #   ... and return it
     0x4f99dc: (0x340000a8, [0xd503201f]),   # autopickup: the pickup check's early "no" -> on to the item's flag
     0x4f99ec: (0x340000c0, [0x14000006]),   #   and the item's NO_AUTOPICKUP attribute (gear, gems) -> picked up too
+    0x04ee18: (0x54000ee9, [0x14000001]),   # crfarm: ChallengeRiftRewardEarned_SaveToProfile's "this challenge's reward
+    0x04ef28: (0x54fff7a8, [0x17ffffbd]),   #   was saved already" -> saved again (d3hack's save-gate bypass; GitHub #22)
+    0x1bd07c: (0xb9409115, [(1, 'c->x[21] = LD32(c->x[8] + 0x90ull); if ((uint32_t)c->x[21]) '
+                                '{ extern int d3_mods_season(void); c->x[21] = (uint32_t)d3_mods_season(); }')]),
+                                             # keepseason: SetGameParamsForHero: a seasonal hero's season -> the current one
+    0x358a88: (0x6b08001f, [(1, '{ uint32_t hs_ = (uint32_t)c->x[8]; if (hs_) hs_ = (uint32_t)c->x[0]; '
+                                '(void)(subs32(c, (uint32_t)c->x[0], hs_)); }')]),
+                                             #   hero select: a seasonal hero of another season -> Play (no Rebirth)
 }
 _applied = set()  # (the PATCHES / REPLACES that apply_text put in, by index: check_applied)
 

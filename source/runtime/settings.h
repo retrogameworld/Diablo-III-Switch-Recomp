@@ -53,8 +53,11 @@ typedef struct {
     unsigned d3_cheats;  // cheats: bit mask (D3C_*)
     int d3_loot;         // legendary drops: D3L_* (0 = the game's own)
     int d3_move, d3_atk; // movement / attack speed in percent (100 = the game's own)
+    int d3_xp, d3_gold;  // experience / gold multipliers (1 = the game's own; GitHub #22)
+    int d3_stash;        // stash size in slots the cheat raises it to (0 = off; the game's own buys go 60..350; GitHub #22)
     bool show_fps;
     bool dpad_move;      // the d-pad (and arrow keys) move Link like the stick
+    bool key_stick_smooth;  // keyboard sticks turn smoothly instead of jumping (runtime/hle/input.c key_stick_*)
     bool rumble;         // controller vibration from the game (runtime/hle/input.c)
     int rumble_strength; // its intensity, percent (25 / 50 / 75 / 100)
     bool controller_light; // the controller's light bar shows Link's health (runtime/led.h, hle/input.c)

@@ -2,6 +2,25 @@
 
 What changed in each release of Diablo III Recomp (Windows). The newest is at the top.
 
+## v1.3.2 (2026-11-28)
+- Controller: a skill on R1 / RB (such as Strafe) no longer jumps to L2 / LT for a moment in a fight. Holding A on
+  something you can act on turned the shoulders over to the menus' layout until A was let go. (#23)
+- Fixed: with the keyboard, walking could turn very slowly and late in fights (for example Zoltun Kulle's Soulstone
+  Chamber): attacking made the game look like a menu was open, and the stick keys turned at menu speed. Controller
+  buttons that moved around mid-fight (#23) had the same cause. (#24)
+- Mods: **Bigger Stash**: the stash grows to 20 to 400 slots more than the 20 a new account starts with, without
+  buying it. It never shrinks, so the space stays on your account. (#22)
+- Mods: **Experience Multiplier** and **Gold Multiplier**: x2 up to x10,000 (gold you pick up; not what vendors pay).
+  (#22)
+- Mods: **Unlimited Challenge Rift Rewards**: every Challenge Rift you beat in time earns its reward cache, not only
+  the first one each week (needs Challenge Rift Offline). (#22)
+- Mods: **Keep Heroes Across Seasons**: seasonal heroes of an earlier season play on as seasonal heroes of the season
+  you pick, with the seasonal stash, instead of being offered Rebirth. (#22)
+- Keyboard: the stick keys now turn smoothly between directions, like yuzu's "Emulate analog with keyboard input"
+  (in play too). In the Inventory and Skills menus they turn slower: hold S, add A or D, and let go of both keys when
+  the slot you want is lit. PC Settings > Controls > Smooth keyboard stick turns it off. (#20)
+- **After updating, the first start builds the game code again, once.**
+
 ## v1.3.1 (2026-11-28)
 - Faster on older CPUs: the game's 3D models now stay on the graphics card between frames instead of being copied
   there again for every draw. Busy places such as towns with many characters used to slow down on 4-core CPUs even

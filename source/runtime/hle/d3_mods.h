@@ -15,9 +15,9 @@ enum {
     D3C_LEGENDARY = 1u << 10, D3C_EASYKILL = 1u << 11, D3C_REDDMG = 1u << 12, D3C_DROPANY = 1u << 13,
     D3C_LEGCHANCE = 1u << 14, D3C_ANYGEM = 1u << 15, D3C_AUTOPICKUP = 1u << 16, D3C_GOD = 1u << 17,
     D3C_DBGFLAGS = 1u << 18, D3C_EQUIPANY = 1u << 19, D3C_CHALLENGE = 1u << 20, D3C_RIFTCLOSE = 1u << 21,
-    D3C_COSMETICS = 1u << 22,
+    D3C_COSMETICS = 1u << 22, D3C_CRFARM = 1u << 23, D3C_KEEPSEASON = 1u << 24,
 };
-#define D3_CHEAT_COUNT 23
+#define D3_CHEAT_COUNT 25
 // d3_loot: legendary drops
 enum { D3L_NORMAL, D3L_ANCIENT, D3L_PRIMAL, D3L_NO_PRIMAL, D3L_NO_ANCIENT, D3L_COUNT };
 
@@ -28,6 +28,13 @@ int d3_mods_season(void);
 const char *d3_cheat_info(int i, const char **desc);
 // the folder Challenge Rift offline reads its files from (d3hack's rift_data)
 const char *d3_rift_dir(void);
+// (GitHub #22) the multiplier / stash-size choices of the Mods tab
+#define D3_MULT_COUNT 12
+extern const int d3_mult_values[D3_MULT_COUNT];
+#define D3_STASH_COUNT 21
+#define D3_STASH_BASE 20  // (the stash a new account has; the game sells 20 more at a time up to 350)
+#define D3_STASH_MAX (D3_STASH_BASE + 20 * (D3_STASH_COUNT - 1))
+int d3_stash_choice(int i);  // i = 0 off, 1..20: the stash size in slots
 
 #ifdef __cplusplus
 }

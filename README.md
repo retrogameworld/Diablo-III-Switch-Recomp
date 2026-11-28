@@ -8,7 +8,16 @@ services, the NVN graphics API, audio output, controllers, saves - are reimpleme
 **No game files are or will be included.** The game is built from the player's own legally dumped copy on their own
 machine.
 
-## What's new in v1.3.1 (2026-11-28)
+## What's new in v1.3.2 (2026-11-28)
+- Controller: a skill on R1 / RB (such as Strafe) no longer jumps to L2 / LT for a moment in a fight. (#23)
+- Keyboard: walking no longer turns very slowly and late in fights. (#24)
+- Mods: Bigger Stash (up to 400 more slots), Experience and Gold Multipliers (up to x10,000), Unlimited Challenge Rift
+  Rewards, Keep Heroes Across Seasons. (#22)
+- Keyboard: the stick keys turn smoothly between directions, like yuzu's "Emulate analog with keyboard input". (#20)
+- The first start after updating builds the game code again, once.
+- (v1.3.1) Everything below.
+
+### v1.3.1 (2026-11-28)
 - Faster on older CPUs: the game's 3D models stay on the graphics card instead of being copied there for every draw,
   so busy towns with many characters no longer slow down on 4-core CPUs.
 - (v1.3.0) Keyboard: key-cap button icons (PC Settings > Controls > Button Icons), and in menus a second direction key
@@ -82,8 +91,14 @@ All off by default; changes apply after a restart. Back up your saves before try
   rift orbs, the same legendary twice, easy kill damage, red damage numbers, drop any item, guaranteed legendaries
   from Kadala and the cube, any gem in any socket, auto pickup, god mode, the developers' debug flags, any item in any
   slot, no rift close timer (a rift closes as soon as you turn it in at Orek), unlock all cosmetics (every wing,
-  pet, pennant and portrait frame; they stay on your account).
+  pet, pennant and portrait frame; they stay on your account), unlimited Challenge Rift rewards (every Challenge Rift
+  beaten in time earns its cache, not only the first each week), keep heroes across seasons (heroes of an earlier
+  season play on as seasonal heroes of the season you pick, instead of being offered Rebirth).
 - **Movement and attack speed:** 100% to 300%.
+- **Experience and gold multipliers:** x2 to x10,000 (gold you pick up).
+- **Bigger Stash:** 20 to 400 more slots than a new account's 20, without buying them. The stash never shrinks: the
+  space stays on your account when this is set back to Normal. (The bag can't grow: the game has its 60 slots built
+  in as a fixed 10 x 6 grid.)
 - **Legendary drops:** always ancient, always primal, no primal or no ancient.
 - **Challenge Rift offline:** the weekly Challenge Rift without servers (Game Settings > Mode > Challenge Rifts; the
   game unlocks it after a solo greater rift). It needs the rift files from d3hack, which are not included here: copy

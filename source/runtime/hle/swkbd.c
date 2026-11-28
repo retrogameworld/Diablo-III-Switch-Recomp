@@ -35,7 +35,11 @@ HLE_FUNC("_ZN2nn5swkbd12ShowKeyboardEPNS0_6StringERKNS0_15ShowKeyboardArgE", swk
     }
     initial[o] = 0;
     char text[96];
-    int ok = menu_keyboard_run(initial, max_len, text, sizeof text);
+    // (LARECOMP_SWKBD_TEXT=<name>: tests - entered at once without the dialog, which a hidden run can't answer: the
+    // game's frames stop while it is up; "-" = the suggested name)
+    const char *test_text = getenv("LARECOMP_SWKBD_TEXT");
+    int ok = test_text ? (snprintf(text, sizeof text, "%s", strcmp(test_text, "-") ? test_text : initial), 1)
+                       : menu_keyboard_run(initial, max_len, text, sizeof text);
     if (!ok) snprintf(text, sizeof text, "%s", initial);  // cancelled: keep what was there
     LOG("[swkbd] name entry (max %d, initial \"%s\"): %s \"%s\"\n", max_len, initial, ok ? "entered" : "cancelled", text);
     // (Diablo III: a cancel is reported as the SDK's own ShowKeyboard does - nn::swkbd's "cancelled", 0x29f (the

@@ -1,0 +1,86 @@
+name: Bug report
+description: Something went wrong in Diablo III Recomp (crash, error, graphics, sound, controls...)
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! **Please attach the log file** - without it most problems can't be tracked down.
+
+        The log is `lasrecomp.log` in the `bin` folder, next to `lasrecomp.exe` (inside the folder you unzipped).
+        It always holds the latest run. Earlier runs are kept next to it as `lasrecomp-backup-....log` - if the
+        problem happened before you started the game again, attach the newest backup too.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the problem, and what you expected to happen instead.
+      placeholder: "The game closes with an error when I open the inventory in Act 2."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen
+      description: The steps that lead to the problem, and whether it happens every time.
+      placeholder: |
+        1. Load my character ...
+        2. Go to ...
+        3. ...
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The release you downloaded, for example v1.3.1.
+      placeholder: "v1.3.1"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Windows 11 24H2"
+    validations:
+      required: true
+
+  - type: input
+    id: cpu
+    attributes:
+      label: CPU
+      placeholder: "Intel Core i5-12400F"
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and driver version
+      placeholder: "AMD RX 6700 XT, driver 24.12.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log file (lasrecomp.log)
+      description: |
+        Drag and drop `lasrecomp.log` into this box (or click here and paste it).
+        It is in the `bin` folder, next to `lasrecomp.exe`.
+      placeholder: Drop lasrecomp.log here
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, videos, settings you changed, or anything else that might help.
+    validations:
+      required: false

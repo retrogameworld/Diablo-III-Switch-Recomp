@@ -209,29 +209,43 @@ static void recompute_keyboard(void) {
 
 // Diablo III's shoulders differ by screen, as on PS4: in play L1 = potion (the Switch's R), L2 = target lock (L),
 // R1 / R2 = skills (ZL / ZR) - bindings.c; in its menus (inventory, skills, pause...) the tabs move with the Switch's
-// L / R, which PS4 has on L1 / R1 (the tester 2026-11-15: L2 / L1 moved the tabs). The game keeps a byte at main+0x18426b0
-// that is 1 while such a menu takes the controller (found by comparing its memory in play and in menus); then the
+// L / R, which PS4 has on L1 / R1 (the tester 2026-11-15: L2 / L1 moved the tabs). While such a menu is open (below) the
 // shoulders go to L / R / ZL / ZR by position.
 int d3_menu_open(void) {  // (also the prompt atlas's labels: nvn/texpatch.c, vulkan/textures.c)
     extern Module g_modules[4];
     extern int g_nmodules;
     if (!game_is_d3() || g_nmodules < 1 || g_modules[0].size <= 0x18426b0) return 0;
-    if (*(volatile uint8_t *)(uintptr_t)(g_modules[0].base + 0x18426b0) != 0) return 1;  // (the game's own menus in play)
-    // (vendors, the artisans, the stash leave that byte 0 - their tabs then got the in-play layout: R1 did nothing and
-    // L1 moved the tabs, GitHub #2. The word at main+0x1830d90 is 0xfeffffff in play and the world's dim colour
-    // (0x..838383) while any window covers it: inventory, pause, map, vendors - found by comparing memory dumps.)
-    if (*(volatile uint32_t *)(uintptr_t)(g_modules[0].base + 0x1830d90) != 0xfeffffffu) return 1;
-    // (outside the world - the main menu and its pages: Options, Challenges, Hero Profile... - the game's flag stays 0,
-    // so the in-play layout applied there: R1 was ZL, which switches nothing - GitHub #2, "the right bumper doesn't
-    // work when navigating between tabs in some menus". No world drawn in the last second: the menus' layout too.)
-    extern uint64_t d3_world_seen_ns(void);
-    extern uint64_t SDL_GetTicksNS(void);
-    uint64_t w = d3_world_seen_ns();
-    int m = !w || SDL_GetTicksNS() - w > 1000000000ull;
     static int last = -1;
-    if (m != last && getenv("D3_LOG_MENU_LAYOUT")) LOG("[input] shoulder layout: %s\n", m ? "menus (no world)" : "play");
-    last = m;
-    return m;
+    static uint32_t last_word;
+    static int log_on = -1;
+    if (log_on < 0) log_on = getenv("D3_LOG_MENU_LAYOUT") != NULL;
+    int m;
+    uint32_t word = *(volatile uint32_t *)(uintptr_t)(g_modules[0].base + 0x1830d90);
+    // The word at main+0x1830d90 is 0xfeffffff in play and the world's dim colour (0x..838383) while any window covers
+    // it: inventory (and its Skills / Paragon / Follower / Quests tabs), pause, map, vendors, the artisans, the stash -
+    // found by comparing memory dumps (GitHub #2). The byte at main+0x18426b0 (1 while the inventory, pause or map has
+    // the controller) was the first sign used, but it is also 1 for a moment in a fight - while A is held on something
+    // the hero can act on (hidden test 2026-11-28: on with each such A press, off at its release, world not dimmed):
+    // the shoulders then took the menus' layout and a skill on R1 moved to L2 mid-fight (GitHub #23). So it only counts
+    // with the world dimmed too, where the word alone already says so.
+    int flag = *(volatile uint8_t *)(uintptr_t)(g_modules[0].base + 0x18426b0) != 0;
+    if (word != 0xfeffffffu) m = flag ? 1 : 2;
+    else {
+        // (outside the world - the main menu and its pages: Options, Challenges, Hero Profile... - the game's flag stays
+        // 0, so the in-play layout applied there: R1 was ZL, which switches nothing - GitHub #2, "the right bumper doesn't
+        // work when navigating between tabs in some menus". No world drawn in the last second: the menus' layout too.)
+        extern uint64_t d3_world_seen_ns(void);
+        extern uint64_t SDL_GetTicksNS(void);
+        uint64_t w = d3_world_seen_ns();
+        m = !w || SDL_GetTicksNS() - w > 1000000000ull ? 3 : flag ? 4 : 0;
+    }
+    if (log_on && (m != last || (m == 2 && word != last_word))) {
+        static const char *const why[] = {"play", "menus (the game's menu flag)", "menus (world dimmed)", "menus (no world)",
+                                          "play (the game's menu flag without a window: ignored)"};
+        LOG("[input] shoulder layout: %s, word %#x\n", why[m], word);
+    }
+    last = m, last_word = word;
+    return m != 0 && m != 4;
 }
 // Diablo III's game menu (pause: Options, Change Difficulty...) is the Switch's Minus, which the default layout puts on
 // the PlayStation touchpad. A pad without one (Xbox, Switch Pro, most others) had no way to open it (GitHub #2): there
@@ -924,54 +938,80 @@ uint64_t input_buttons_now(void) { return (menu_input_captured() ? 0 : key_butto
 
 static int32_t clamp_axis(int32_t v) { return v > 32767 ? 32767 : v < -32767 ? -32767 : v; }
 
-// The keyboard's sticks in Diablo III's menus (GitHub #20: "the slots for equipment and skills"). The inventory's
-// equipment slots sit in a ring around the hero, picked by the stick's angle (as are the skill choices and the map's
-// waypoints); four keys give eight angles only, so some slots could not be reached from the keyboard. While one of
-// the game's menus is open, a key pressed while the stick already points somewhere turns it toward the new direction
-// at a steady speed instead of jumping there, and letting go of a key stops the turn where it is: hold S, add D, and
-// let go of D when the slot lights up. The first key still points at once, and in play the keys work as before.
-// (The idea of a key stick that turns rather than jumps is yuzu's; none of its code is used.)
-// D3_KEY_STICK_TURN=<degrees a second> (0: off; default 60: at 100 the boots slot, a narrow one between the bag and
-// the legs, was lit for a tenth of a second only - hidden test 2026-11-28).
-typedef struct { bool on, turning; float ang; int keys; uint64_t t; } KeyStick;
-static void key_stick(KeyStick *k, int keys, bool smooth, float speed, int32_t *ox, int32_t *oy) {
+// Keyboard sticks that turn instead of jump (GitHub #20; Controls > "Smooth keyboard stick", on by default). The player
+// asked for yuzu's "Emulate analog with keyboard input", which this follows in behaviour (none of its code is used):
+// toward a neighbouring direction (a change of up to 54 degrees: a key added next to the one held, or one of two let
+// go) the stick turns at 5.5 radians (~315 degrees) a second, a bigger change jumps, and the angle is kept while no
+// key is held, so the next press turns from there. In the game's menus it turns slower (60 degrees a second,
+// D3_KEY_STICK_TURN=<deg/s>): the inventory's equipment slots and the skill choices sit in a ring picked by the
+// stick's angle, and four keys alone give eight angles. Hold S, add D, and let go of both keys when the slot lights
+// up (the game keeps it); at yuzu's speed the narrow boots slot was lit for a few hundredths of a second (hidden test
+// 2026-11-28). A menu press after half a second without keys points straight at its direction. The turn advances by
+// the time since the game's last read, at most 50 ms of it: a hitch (a hidden test had a 0.6 s one as the boots'
+// item loaded) moved it 23 degrees at once, onto the next slot.
+typedef struct { int keys; bool has; float ang, goal; uint64_t t, off, tp; } KeyStick;
+#define KS_APERTURE 0.9424778f  // (54 degrees)
+static float ks_wrap(float d) {
+    while (d > 3.14159265f) d -= 6.28318531f;
+    while (d < -3.14159265f) d += 6.28318531f;
+    return d;
+}
+static void key_stick(KeyStick *k, int keys, bool menu, float menu_speed, int32_t *ox, int32_t *oy) {
     int dx = (keys >> 3 & 1) - (keys >> 2 & 1), dy = (keys & 1) - (keys >> 1 & 1);  // (keys: up, down, left, right)
-    uint64_t now = SDL_GetTicksNS();
-    float dt = k->on ? (float)((now - k->t) / 1e9) : 0;
-    k->t = now;
-    if (!keys) { k->on = false, k->keys = 0, *ox = *oy = 0; return; }
-    if (!smooth || !k->on) {
-        k->keys = keys;
-        if (!dx && !dy) { k->on = false, *ox = *oy = 0; return; }  // (opposite keys only)
-        k->on = true, k->turning = false, k->ang = atan2f((float)dy, (float)dx);
-        if (!smooth) { *ox = dx * 32767, *oy = dy * 32767; return; }  // (exactly as before: diagonals at full tilt)
-    } else {
-        if (keys & ~k->keys) k->turning = true;        // a key added: turn toward the new direction
-        else if (k->keys & ~keys) k->turning = false;  // a key let go: stay where it points now
-        k->keys = keys;
-        if (k->turning && (dx || dy)) {
-            float d = atan2f((float)dy, (float)dx) - k->ang, step = speed * (dt > 0.1f ? 0.1f : dt);
-            while (d > 3.14159265f) d -= 6.28318531f;
-            while (d < -3.14159265f) d += 6.28318531f;
-            k->ang += fabsf(d) <= step ? d : d > 0 ? step : -step;
-        }
+    if (!g_settings.key_stick_smooth || !game_is_d3()) {  // (as before: eight directions, diagonals at full tilt)
+        k->keys = keys, k->has = false;
+        *ox = dx * 32767, *oy = dy * 32767;
+        return;
     }
+    float speed = menu ? menu_speed : 5.5f;
+    uint64_t now = SDL_GetTicksNS();
+    double dt = k->tp ? (now - k->tp) / 1e9 : 0;
+    k->tp = now;
+    if (k->has) {  // the turn toward the goal: within the aperture at `speed`, a bigger change at once
+        float d = ks_wrap(k->goal - k->ang), step = speed * (float)(dt > 0.05 ? 0.05 : dt);
+        k->ang = fabsf(d) > KS_APERTURE || fabsf(d) <= step ? k->goal : k->ang + (d > 0 ? step : -step);
+    }
+    if (keys != k->keys) {
+        if (dx || dy) {
+            float goal = atan2f((float)dy, (float)dx);
+            bool fresh = !k->has || (!k->keys && menu && now - k->off > 500000000ull);
+            // (two keys pressed together - within 10 ms, as yuzu - give the diagonal at once)
+            if (fresh || now - k->t < 10000000ull) k->ang = goal;
+            k->goal = goal, k->has = true;
+        }
+        if (!keys) k->off = now;
+        if (getenv("D3_LOG_KEY_STICK"))
+            LOG("[keystick] keys %x -> %x after %.1f ms: angle %.1f, goal %.1f\n", k->keys, keys, (now - k->t) / 1e6,
+                k->ang * 57.29578f, k->goal * 57.29578f);
+        k->t = now, k->keys = keys;
+    }
+    if (!dx && !dy) { *ox = *oy = 0; return; }  // (no key, or opposite keys only)
     *ox = (int32_t)lroundf(cosf(k->ang) * 32767), *oy = (int32_t)lroundf(sinf(k->ang) * 32767);
 }
 static void key_sticks(int32_t *lx, int32_t *ly, int32_t *rx, int32_t *ry) {
     static KeyStick ks[2];
-    static float speed = -1;
-    if (speed < 0) {
+    static float menu_speed = -1;
+    if (menu_speed < 0) {
         const char *e = getenv("D3_KEY_STICK_TURN");
-        speed = (e ? (float)atof(e) : 60.0f) * 3.14159265f / 180;
+        menu_speed = (e ? (float)atof(e) : 60.0f) * 3.14159265f / 180;
+        if (menu_speed <= 0) menu_speed = 5.5f;  // (0: yuzu's speed in menus too)
     }
-    bool smooth = game_is_d3() && speed > 0 && d3_menu_open();
+    bool menu = game_is_d3() && d3_menu_open();
     int l = held_key(g_bind_key[BIND_LS_UP]) | held_key(g_bind_key[BIND_LS_DOWN]) << 1 |
             held_key(g_bind_key[BIND_LS_LEFT]) << 2 | held_key(g_bind_key[BIND_LS_RIGHT]) << 3;
     int r = held_key(g_bind_key[BIND_RS_UP]) | held_key(g_bind_key[BIND_RS_DOWN]) << 1 |
             held_key(g_bind_key[BIND_RS_LEFT]) << 2 | held_key(g_bind_key[BIND_RS_RIGHT]) << 3;
-    key_stick(&ks[0], l, smooth, speed, lx, ly);
-    key_stick(&ks[1], r, smooth, speed, rx, ry);
+    key_stick(&ks[0], l, menu, menu_speed, lx, ly);
+    key_stick(&ks[1], r, menu, menu_speed, rx, ry);
+    static int dbg = -1;  // D3_LOG_KEY_STICK=1: the left key stick's output as it changes (frame, keys, x, y, degrees)
+    static int32_t lastx, lasty;
+    if (dbg < 0) dbg = getenv("D3_LOG_KEY_STICK") != NULL;
+    if (dbg && (*lx != lastx || *ly != lasty)) {
+        extern uint64_t renderer_present_count(void);
+        LOG("[keystick] frame %llu keys %x x %d y %d (%.1f deg)%s\n", (unsigned long long)renderer_present_count(), l, *lx,
+            *ly, atan2((double)*ly, (double)*lx) * 180 / 3.14159265, menu ? " menu" : "");
+        lastx = *lx, lasty = *ly;
+    }
 }
 
 // NpadFullKeyState / NpadHandheldState / NpadJoy*State share this layout (0x28 bytes):
