@@ -130,6 +130,16 @@ static int nregions;
 static uint64_t heap_size;
 static uint64_t tls_next = TLS_BASE;
 uint64_t kernel_heap_size(void) { return heap_size; }  // bytes from HEAP_BASE set by SetHeapSize
+// Bytes the game has mapped with MapPhysicalMemory (Diablo III's heap), and the number of pieces: for the memory log
+// (runtime/hle/d3_mods.c d3_mem_watch). Read without the lock: a diagnostic, a torn read only skews one line.
+uint64_t kernel_phys_mapped(int *pieces) {
+    uint64_t n = 0;
+    int k = 0;
+    for (int i = 0; i < nregions; i++)
+        if (regions[i].type == 0x7) n += regions[i].size, k++;
+    if (pieces) *pieces = k;
+    return n;
+}
 // Writable guest data regions (heap, mapped/physical memory, module .data): for debug/runtime memory scans.
 int kernel_data_regions(uint64_t *addr, uint64_t *size, int max) {
     int n = 0;
@@ -910,7 +920,9 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         case 3: v = ALIAS_SIZE; break;
         case 4: v = HEAP_BASE; break;
         case 5: v = HEAP_MAX; break;
-        case 6: case 21: v = 0xCD500000ull; break;  // application memory (3.2 GB, as on hardware)
+        case 6: case 21:  // application memory (3.2 GB, as on hardware); LARECOMP_APP_MEMORY_MB=<n> (test) another size
+            v = ENV("LARECOMP_APP_MEMORY_MB") ? (uint64_t)atoll(ENV("LARECOMP_APP_MEMORY_MB")) << 20 : 0xCD500000ull;
+            break;
         case 7: case 22: v = heap_size + 0x4000000; break;
         case 8: v = 0; break;
         case 9: v = 0; break;
@@ -930,6 +942,11 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         }
         x[0] = r;
         x[1] = v;
+        if (ENV("LARECOMP_LOG_GETINFO")) {  // (which ids a game asks, and how often)
+            static int seen[64];
+            if (id0 < 64 && seen[id0]++ < 3)
+                LOG("[kernel] GetInfo %u -> %#llx (lr %llx)\n", id0, (unsigned long long)v, (unsigned long long)x[30]);
+        }
         break;
     }
     case 0x2C:  // MapPhysicalMemory(addr, size)

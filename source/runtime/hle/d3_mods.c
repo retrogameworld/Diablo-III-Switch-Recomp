@@ -265,7 +265,7 @@ static int cr_hook(Cpu *c, uint64_t addr);
 enum { F_CLOSING = 0x8db530, F_WAIT = 0x8a4740 };  // the scripts' DungeonFinderClosingTriggered / Wait (rift_close)
 // an item's flavor text (main+0x505d60: CRefString ItemFlavorText(GBID), the result through x8 - {buffer, chars});
 // CRefString::Set(const char *) main+0xa492d0
-enum { F_FLAVOR = 0x505d60, F_STR_ASSIGN = 0xa492d0 };
+enum { F_FLAVOR = 0x505d60, F_STR_ASSIGN = 0xa492d0, F_GAME_ERROR = 0xa2ad70 };
 bool d3_no_icon(uint32_t gbid);
 static int rift_close(Cpu *c, uint64_t addr);
 static void rift_close_test(Cpu *c);
@@ -373,6 +373,28 @@ int d3_mods_fn(Cpu *c, uint64_t addr) {
         return 1;
     case MAIN + F_CLOSING: case MAIN + F_WAIT:
         return rift_close(c, addr);
+    case MAIN + F_GAME_ERROR: {  // void ErrorReport(ErrorCode, const char *msg): what stopped the game, for its log
+        // (GitHub: a rare crash entering a rift was the game's own "Out of Memory Error", code 0x82, with nothing
+        // in the log about where: the message, the caller chain and how much memory the game had mapped)
+        uint32_t code = (uint32_t)c->x[0];
+        const char *msg = c->x[1] > 0x10000 ? (const char *)(uintptr_t)c->x[1] : NULL;
+        extern uint64_t kernel_phys_mapped(int *pieces);
+        int pieces;
+        uint64_t mapped = kernel_phys_mapped(&pieces);
+        LOG("[d3] the game reports error %#x: %.300s (mapped %llu MB in %d pieces)\n", code, msg ? msg : "(no text)",
+            (unsigned long long)(mapped >> 20), pieces);
+        LOG("[d3]   called from %llx", (unsigned long long)c->x[30]);
+        uint64_t fp = c->x[29];
+        for (int i = 0; i < 12 && fp > 0x10000 && !(fp & 7); i++) {
+            uint64_t lr = LD64(fp + 8), next = LD64(fp);
+            if (lr < MAIN || lr > MAIN + 0x2000000) break;
+            LOG(" < main+%llx", (unsigned long long)(lr - MAIN));
+            if (next <= fp) break;
+            fp = next;
+        }
+        LOG("\n");
+        return 0;
+    }
     case MAIN + F_FLAVOR: {  // CRefString ItemFlavorText(GBID) (x8: the result): a cosmetic shown with an emblem says why
         uint32_t gbid = (uint32_t)c->x[0];
         uint64_t out = c->x[8];
@@ -761,8 +783,32 @@ static void rift_close_test(Cpu *c) {
     LOG("[d3mods] test: DungeonFinderClosingTriggered(30) called, its argument is now %.0f\n", v);
 }
 
+// The game's mapped memory in the log: a line each time it passes another 256 MB (a slow climb over a session shows a
+// leak; the "Out of Memory Error" report says where it ended). D3_MEM_LOG=<seconds>: also a line that often.
+static void d3_mem_watch(void) {
+    extern uint64_t kernel_phys_mapped(int *pieces);
+    extern uint64_t SDL_GetTicks(void);
+    static uint64_t high, last_ms;
+    static long every = -1;
+    if (every < 0) every = getenv("D3_MEM_LOG") ? atol(getenv("D3_MEM_LOG")) : 0;
+    uint64_t now = SDL_GetTicks();
+    if (now - last_ms < 1000) return;
+    int pieces;
+    uint64_t m = kernel_phys_mapped(&pieces);
+    bool step = m >= high + (256ull << 20);
+    static uint64_t last_log;
+    if (step || (every > 0 && now - last_log >= (uint64_t)every * 1000)) {
+        if (step) high = m & ~((256ull << 20) - 1);
+        last_log = now;
+        LOG("[mem] the game has %llu MB mapped (%d pieces) at %llu s\n", (unsigned long long)(m >> 20), pieces,
+            (unsigned long long)(now / 1000));
+    }
+    last_ms = now;
+}
+
 void d3_mods_pump(Cpu *c) {
     init();
+    d3_mem_watch();
     if (!g_season && !g_buffs && !g_cr) return;
     static int state;  // 0 not checked yet, 1 ok, -1 refused
     static unsigned polls;

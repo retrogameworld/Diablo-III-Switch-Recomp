@@ -2,6 +2,10 @@
 
 What changed in each release of Diablo III Recomp (Windows). The newest is at the top.
 
+## v1.2.7 (2026-11-28)
+- If the game stops with its own error (such as "Out of Memory"), the log now says the error, where it came from and
+  how much memory the game was using, so a report with the log shows what happened.
+
 ## v1.2.6 (2026-11-27)
 - Challenges are in the pause menu too, so you can check your progress without leaving the game. (#16)
 - Mods: new cheat **No Rift Close Timer**: a rift closes as soon as you turn it in at Orek, without the 30-second

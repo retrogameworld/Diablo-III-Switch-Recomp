@@ -38,6 +38,7 @@ MOD_ENTRIES = [
     0x8db530,  # the scripts' DungeonFinderClosingTriggered(seconds) (no rift close timer, GitHub #15)
     0x8a4740,  # the scripts' Wait(seconds) (no rift close timer: the wait right after it)
     0x505d60,  # an item's flavor text (a cosmetic without an icon: "only in the PC version", d3_icon_placeholder)
+    0xa2ad70,  # the game's error report (code, message): logged with a guest backtrace before it stops the game
 ]
 # Instruction variants, switched at run time (d3_mods_word: 0 = the game's own instruction): main offset ->
 # (the original word, checked by gen.py; [the variant word]) or [(a number, C written by hand)]. d3_mods.c k_sites has

@@ -8,7 +8,11 @@ services, the NVN graphics API, audio output, controllers, saves - are reimpleme
 **No game files are or will be included.** The game is built from the player's own legally dumped copy on their own
 machine.
 
-## What's new in v1.2.6 (2026-11-27)
+## What's new in v1.2.7 (2026-11-28)
+- If the game stops with its own error (such as "Out of Memory"), the log now says where it came from.
+- (v1.2.6) Everything below.
+
+### v1.2.6 (2026-11-27)
 - Challenges are in the pause menu too: check your progress without leaving the game. (#16)
 - Mods: new cheat No Rift Close Timer: a rift closes as soon as you turn it in at Orek, no 30-second wait. (#15)
 - Mods: new cheat Unlock All Cosmetics: every wing, pet, pennant and portrait frame. (#15)
